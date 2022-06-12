@@ -14,11 +14,12 @@ type Config struct {
 	Replicas []struct {
 		Address string `json:"address"`
 	} `json:"replicas"`
+	LocalDir string `json:"local_dir"`
 }
 
-func ReadConfig() *Config {
-	var config *Config
-	if err := json.Unmarshal(rawConfig, config); err != nil {
+func ReadConfig() Config {
+	var config Config
+	if err := json.Unmarshal(rawConfig, &config); err != nil {
 		zap.L().Fatal("failed to read config.json", zap.Error(err))
 	}
 	return config
