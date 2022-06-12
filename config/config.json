@@ -12,5 +12,6 @@
     {
       "address": ":9004"
     }
-  ]
+  ],
+  "local_dir": "/tmp/rfs_tests"
 }
