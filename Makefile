@@ -26,7 +26,7 @@ go/generate:
 
 go/format:
 	go fmt ./...
-	goimports ./..
+	#goimports ./..
 
 go/test:
 	go test -v -race ./...
