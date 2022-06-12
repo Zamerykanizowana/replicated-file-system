@@ -1,9 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"go.uber.org/zap"
+
+	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
@@ -16,6 +20,10 @@ var (
 	commit = "unknown-commit"
 )
 
+type rfsRoot struct {
+	fs.Inode
+}
+
 func main() {
 	logging.Configure()
 	appConfig = config.ReadConfig()
@@ -26,4 +34,19 @@ func main() {
 	if err := os.MkdirAll(appConfig.LocalDir, 0660); err != nil {
 		zap.L().Fatal("unable to create local directory", zap.Error(err))
 	}
+
+	root := &rfsRoot{}
+
+	server, err := fs.Mount(appConfig.LocalDir, root, &fs.Options{
+		MountOptions: fuse.MountOptions{Debug: true},
+	})
+
+	if err != nil {
+		zap.L().Fatal("unable to mount fuse filesystem", zap.Error(err))
+	}
+
+	zap.L().Info("unmount by calling", zap.String("cmd", fmt.Sprintf("fusermount -u %s", appConfig.LocalDir)))
+
+	// Wait until user unmounts FS
+	server.Wait()
 }
