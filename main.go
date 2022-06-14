@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -22,6 +23,25 @@ var (
 
 type rfsRoot struct {
 	fs.Inode
+}
+
+var staticFiles = map[string]string{
+	"junkie": "this is some contents",
+	"groovy": "and something else!",
+}
+
+func (root *rfsRoot) OnAdd(ctx context.Context) {
+	for name, content := range staticFiles {
+		p := &root.Inode
+
+		memFile := &fs.MemRegularFile{
+			Data: []byte(content),
+		}
+
+		inode := p.NewPersistentInode(ctx, memFile, fs.StableAttr{})
+
+		p.AddChild(name, inode, true)
+	}
 }
 
 func main() {
