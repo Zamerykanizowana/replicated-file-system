@@ -31,7 +31,7 @@ func main() {
 	zap.L().Info("Hello!", zap.String("commit", commit), zap.String("branch", branch))
 	zap.L().Info("Initializing FS", zap.String("local_path", appConfig.LocalDir))
 
-	if err := os.MkdirAll(appConfig.LocalDir, 0660); err != nil {
+	if err := os.MkdirAll(appConfig.LocalDir, 0777); err != nil {
 		zap.L().Fatal("unable to create local directory", zap.Error(err))
 	}
 
