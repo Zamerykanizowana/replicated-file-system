@@ -3,11 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/hanwen/go-fuse/v2/fs"
-	"github.com/hanwen/go-fuse/v2/fuse"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
@@ -21,7 +22,16 @@ var (
 )
 
 type rfsRoot struct {
-	fs.Inode
+	fs.LoopbackNode
+}
+
+func newRfsRoot(r *fs.LoopbackRoot, p *fs.Inode, n string, st *syscall.Stat_t) fs.InodeEmbedder {
+	node := &rfsRoot{
+		LoopbackNode: fs.LoopbackNode{
+			RootData: r,
+		},
+	}
+	return node
 }
 
 func main() {
@@ -35,10 +45,16 @@ func main() {
 		zap.L().Fatal("unable to create local directory", zap.Error(err))
 	}
 
-	root := &rfsRoot{}
+	root := &fs.LoopbackRoot{
+		NewNode: newRfsRoot,
+		Path:    appConfig.Paths.MirrorDir,
+	}
 
-	server, err := fs.Mount(appConfig.Paths.FuseDir, root, &fs.Options{
-		MountOptions: fuse.MountOptions{Debug: true},
+	sec := time.Second
+
+	server, err := fs.Mount(appConfig.Paths.FuseDir, newRfsRoot(root, nil, "", nil), &fs.Options{
+		AttrTimeout:  &sec,
+		EntryTimeout: &sec,
 	})
 
 	if err != nil {
