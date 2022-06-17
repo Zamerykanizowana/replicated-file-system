@@ -14,7 +14,7 @@
     }
   ],
   "paths": {
-    "fuse_dir": "~/rfs/virtual",
-    "mirror_dir": "~/rfs/contents"
+    "fuse_dir": "~/other/rfs/virtual",
+    "mirror_dir": "~/other/rfs/contents"
   }
 }
