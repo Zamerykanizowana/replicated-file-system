@@ -4,8 +4,10 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os/user"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"go.uber.org/zap"
@@ -42,5 +44,20 @@ func ReadConfig() Config {
 	if err := json.Unmarshal(rawConfig, &config); err != nil {
 		zap.L().Fatal("failed to read config.json", zap.Error(err))
 	}
+
+	configPaths := reflect.ValueOf(&config.Paths).Elem()
+
+	for i := 0; i < configPaths.NumField(); i++ {
+		pathField := configPaths.Field(i)
+		expandedPath, err := expandHome(fmt.Sprintf("%s", pathField))
+
+		// TODO: log error!
+		if err != nil {
+			continue
+		}
+
+		pathField.SetString(expandedPath)
+	}
+
 	return config
 }
