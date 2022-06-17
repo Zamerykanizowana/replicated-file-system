@@ -29,15 +29,15 @@ func main() {
 	appConfig = config.ReadConfig()
 
 	zap.L().Info("Hello!", zap.String("commit", commit), zap.String("branch", branch))
-	zap.L().Info("Initializing FS", zap.String("local_path", appConfig.LocalDir))
+	zap.L().Info("Initializing FS", zap.String("local_path", appConfig.Paths.FuseDir))
 
-	if err := os.MkdirAll(appConfig.LocalDir, 0777); err != nil {
+	if err := os.MkdirAll(appConfig.Paths.FuseDir, 0777); err != nil {
 		zap.L().Fatal("unable to create local directory", zap.Error(err))
 	}
 
 	root := &rfsRoot{}
 
-	server, err := fs.Mount(appConfig.LocalDir, root, &fs.Options{
+	server, err := fs.Mount(appConfig.Paths.FuseDir, root, &fs.Options{
 		MountOptions: fuse.MountOptions{Debug: true},
 	})
 
@@ -45,7 +45,7 @@ func main() {
 		zap.L().Fatal("unable to mount fuse filesystem", zap.Error(err))
 	}
 
-	zap.L().Info("unmount by calling", zap.String("cmd", fmt.Sprintf("fusermount -u %s", appConfig.LocalDir)))
+	zap.L().Info("unmount by calling", zap.String("cmd", fmt.Sprintf("fusermount -u %s", appConfig.Paths.FuseDir)))
 
 	// Wait until user unmounts FS
 	server.Wait()
