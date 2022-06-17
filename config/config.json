@@ -13,5 +13,8 @@
       "address": ":9004"
     }
   ],
-  "local_dir": "/tmp/rfs_tests"
+  "paths": {
+    "fuse_dir": "~/rfs/virtual",
+    "mirror_dir": "~/rfs/contents"
+  }
 }

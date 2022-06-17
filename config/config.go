@@ -3,6 +3,10 @@ package config
 import (
 	_ "embed"
 	"encoding/json"
+	"errors"
+	"os/user"
+	"path/filepath"
+	"strings"
 
 	"go.uber.org/zap"
 )
@@ -14,7 +18,23 @@ type Config struct {
 	Replicas []struct {
 		Address string `json:"address"`
 	} `json:"replicas"`
-	LocalDir string `json:"local_dir"`
+	Paths struct {
+		FuseDir   string `json:"fuse_dir"`
+		MirrorDir string `json:"mirror_dir"`
+	} `json:"paths"`
+}
+
+func expandHome(path string) (string, error) {
+	usr, _ := user.Current()
+	expandedPath := path
+
+	if path == "~" {
+		return "", errors.New("Mirroring home directory directly is not allowed!")
+	} else if strings.HasPrefix(path, "~/") {
+		expandedPath = filepath.Join(usr.HomeDir, path[2:])
+	}
+
+	return expandedPath, nil
 }
 
 func ReadConfig() Config {
