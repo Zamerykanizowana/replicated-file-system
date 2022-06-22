@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"go.uber.org/zap"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
@@ -32,8 +30,5 @@ func main() {
 		zap.L().Fatal("unable to mount fuse filesystem", zap.Error(err))
 	}
 
-	zap.L().Info("unmount by calling", zap.String("cmd", fmt.Sprintf("fusermount -u %s", appConfig.Paths.FuseDir)))
-
-	// Wait until user unmounts FS
-	server.Server.Wait()
+	server.Wait()
 }

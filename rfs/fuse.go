@@ -1,6 +1,7 @@
 package rfs
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -31,6 +32,19 @@ func (r *RfsFuseServer) Mount() error {
 	}
 
 	return err
+}
+
+func (r *RfsFuseServer) Wait() {
+	zap.L().Info(
+		"unmount by calling",
+		zap.String(
+			"cmd",
+			fmt.Sprintf("fusermount -u %s", r.Config.Paths.FuseDir),
+		),
+	)
+
+	// Wait until user unmounts FS
+	r.Server.Wait()
 }
 
 func NewRfsFuseServer(c config.Config) *RfsFuseServer {
