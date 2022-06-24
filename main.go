@@ -24,9 +24,7 @@ func main() {
 
 	server := rfs.NewRfsFuseServer(appConfig)
 
-	err := server.Mount()
-
-	if err != nil {
+	if err := server.Mount(); err != nil {
 		zap.L().Fatal("unable to mount fuse filesystem", zap.Error(err))
 	}
 
