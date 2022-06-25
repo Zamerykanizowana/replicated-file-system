@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
-	"github.com/Zamerykanizowana/replicated-file-system/logging"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"go.uber.org/zap"
@@ -62,8 +61,4 @@ func NewRfsFuseServer(c config.Config) *RfsFuseServer {
 		RfsRoot:      newRfsRoot(root, nil, "", nil),
 		Config:       c,
 	}
-}
-
-func init() {
-	logging.Configure()
 }
