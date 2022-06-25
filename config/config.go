@@ -26,15 +26,14 @@ type Config struct {
 
 func expandHome(path string) (string, error) {
 	usr, _ := user.Current()
-	expandedPath := path
 
 	if path == "~" {
 		return "", errors.New("Mirroring home directory directly is not allowed!")
 	} else if strings.HasPrefix(path, "~/") {
-		expandedPath = filepath.Join(usr.HomeDir, path[2:])
+		return filepath.Join(usr.HomeDir, path[2:]), nil
+	} else {
+		return path, nil
 	}
-
-	return expandedPath, nil
 }
 
 func ReadConfig() Config {
