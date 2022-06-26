@@ -1,16 +1,24 @@
 {
-  "replicas": [
+  "peers": [
     {
-      "address": ":9001"
+      "host": "localhost",
+      "port": 9001,
+      "name": "Aragorn"
     },
     {
-      "address": ":9002"
+      "host": "localhost",
+      "port": 9002,
+      "name": "Legolas"
     },
     {
-      "address": ":9003"
+      "host": "localhost",
+      "port": 9003,
+      "name": "Frodo"
     },
     {
-      "address": ":9004"
+      "host": "localhost",
+      "port": 9004,
+      "name": "Gandalf"
     }
   ],
   "paths": {

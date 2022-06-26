@@ -17,6 +17,9 @@ all: build run
 run:
 	./${OUT}
 
+run/parallel:
+	cat config/config.json | jq -r '.peers | .[].name' | parallel ./build/rfs -n {} | jq
+
 build: go/generate go/format
 	mkdir -p build
 	go build -ldflags "${LDFLAGS}" -o ${OUT} main.go
@@ -26,10 +29,17 @@ go/generate:
 
 go/format:
 	go fmt ./...
-	#goimports ./..
+	#@goimports ./.. >/dev/null
 
 go/test:
 	go test -v -race ./...
+
+go/protobuf:
+	@find ./protobuf -type f -name *.proto -printf "%f\n" | \
+		xargs -I{} protoc {}\
+			--proto_path=protobuf \
+			--go_opt=module=github.com/Zamerykanizowana/replicated-file-system \
+			--go_out=Mprotobuf/{}=:.
 
 install/build-dependencies:
 	go install golang.org/x/tools/cmd/goimports@latest
