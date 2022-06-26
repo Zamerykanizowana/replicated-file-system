@@ -20,9 +20,11 @@ run:
 run/parallel:
 	cat config/config.json | jq -r '.peers | .[].name' | parallel ./build/rfs -n {} | jq
 
-build: go/generate go/format
+build:
 	mkdir -p build
 	go build -ldflags "${LDFLAGS}" -o ${OUT} main.go
+
+build-full: go/generate go/format go/verify go/test build
 
 go/generate:
 	go generate ./...
@@ -33,6 +35,9 @@ go/format:
 
 go/test:
 	go test -v -race ./...
+
+go/verify:
+	go vet ./...
 
 go/protobuf:
 	@find ./protobuf -type f -name *.proto -printf "%f\n" | \

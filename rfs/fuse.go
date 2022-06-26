@@ -5,10 +5,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"go.uber.org/zap"
+
+	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
 
 type RfsFuseServer struct {

@@ -3,6 +3,12 @@ package config
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
@@ -12,19 +18,8 @@ import (
 //go:embed config.json
 var rawConfig []byte
 
-
 func Default() *Config {
 	return mustUnmarshalConfig(rawConfig)
-}
-
-type Config struct {
-	Replicas []struct {
-		Address string `json:"address"`
-	} `json:"replicas"`
-	Paths struct {
-		FuseDir   string `json:"fuse_dir"`
-		MirrorDir string `json:"mirror_dir"`
-	} `json:"paths"`
 }
 
 func Read(path string) *Config {
@@ -55,25 +50,13 @@ func expandHome(path string) (string, error) {
 	}
 }
 
-func Read(path string) *Config {
-	f, err := os.Open(path)
-	if err != nil {
-		zap.L().
-			With(zap.String("filepath", path)).
-			Fatal("failed to open config file", zap.Error(err))
-	}
-	raw, err := io.ReadAll(f)
-	if err != nil {
-		zap.L().
-			With(zap.String("filepath", path)).
-			Fatal("failed to read config file contents", zap.Error(err))
-	}
-	return mustUnmarshalConfig(raw)
-}
-
 type (
 	Config struct {
 		Peers []*PeerConfig
+		Paths struct {
+			FuseDir   string `json:"fuse_dir"`
+			MirrorDir string `json:"mirror_dir"`
+		} `json:"paths"`
 	}
 	PeerConfig struct {
 		Host string
@@ -101,11 +84,13 @@ func (c Config) Validate() (err error) {
 }
 
 func mustUnmarshalConfig(raw []byte) *Config {
-	var config Config
-	if err := json.Unmarshal(raw, &config); err != nil {
+	var (
+		config Config
+		err    error
+	)
+	if err = json.Unmarshal(raw, &config); err != nil {
 		zap.L().Fatal("failed to read config.json", zap.Error(err))
 	}
-	var err error
 	for _, path := range []*string{&config.Paths.FuseDir, &config.Paths.MirrorDir} {
 		*path, err = expandHome(*path)
 		if err != nil {
