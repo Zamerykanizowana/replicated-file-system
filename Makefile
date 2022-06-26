@@ -8,6 +8,8 @@ LDFLAGS := \
 
 OUT=build/rfs
 
+export PATH := $(shell go env GOPATH)/bin:$(PATH)
+
 .PHONY: all build test clean run format test help
 
 all: build run
@@ -24,7 +26,7 @@ go/generate:
 
 go/format:
 	go fmt ./...
-	goimports ./..
+	#goimports ./..
 
 go/test:
 	go test -v -race ./...

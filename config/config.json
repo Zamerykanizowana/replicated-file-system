@@ -12,5 +12,9 @@
     {
       "address": ":9004"
     }
-  ]
+  ],
+  "paths": {
+    "fuse_dir": "~/other/rfs/virtual",
+    "mirror_dir": "~/other/rfs/contents"
+  }
 }
