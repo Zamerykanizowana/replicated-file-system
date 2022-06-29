@@ -59,9 +59,9 @@ type (
 		} `json:"paths"`
 	}
 	PeerConfig struct {
-		Host string
-		Name string
-		Port uint
+		Host string `json:"host"`
+		Name string `json:"name"`
+		Port uint   `json:"port"`
 	}
 )
 

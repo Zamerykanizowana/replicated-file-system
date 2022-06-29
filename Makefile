@@ -18,7 +18,7 @@ run:
 	./${OUT}
 
 run/parallel:
-	cat config/config.json | jq -r '.peers | .[].name' | parallel ./build/rfs -n {} | jq
+	jq -r '.peers | .[].name' config/config.json | parallel ./build/rfs -n {} | jq
 
 build:
 	mkdir -p build
