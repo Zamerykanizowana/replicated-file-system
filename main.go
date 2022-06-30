@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/pkg/errors"
@@ -16,6 +17,11 @@ import (
 var (
 	branch = "unknown-branch"
 	commit = "unknown-commit"
+
+	flagValues = struct {
+		Name string
+		Path cli.Path
+	}{}
 )
 
 func main() {
@@ -25,11 +31,29 @@ func main() {
 	app := &cli.App{
 		Name:     "rfs",
 		HelpName: "Replicated file system using FUSE bindings and peer-2-peer architecture",
-		Flags:    flags(),
+		Flags: []cli.Flag{
+			&cli.PathFlag{
+				Name:        "config",
+				DefaultText: "By default embedded config.json is loaded",
+				Usage:       "Load configuration from 'FILE'",
+				Destination: &flagValues.Path,
+				Aliases:     []string{"c"},
+				TakesFile:   true,
+			},
+		},
 		Commands: cli.Commands{
 			{
 				Name:   "p2p",
 				Action: func(context *cli.Context) error { return runP2P(cfg) },
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:        "name",
+						Usage:       "Provide peer name, It must be also present in the config, linked to an address",
+						Required:    true,
+						Destination: &flagValues.Name,
+						Aliases:     []string{"n"},
+					},
+				},
 			},
 			{
 				Name:   "rfs",
@@ -51,6 +75,9 @@ func runP2P(cfg *config.Config) error {
 			continue
 		}
 		peersConfig = append(peersConfig, p)
+	}
+	if selfConfig == nil {
+		return fmt.Errorf("peer with name %s was not found", flagValues.Name)
 	}
 	return p2p.Run(selfConfig, peersConfig)
 }
@@ -81,29 +108,4 @@ func mustReadConfig() *config.Config {
 		zap.L().Panic(err.Error())
 	}
 	return cfg
-}
-
-var flagValues = struct {
-	Name string
-	Path cli.Path
-}{}
-
-func flags() []cli.Flag {
-	return []cli.Flag{
-		&cli.StringFlag{
-			Name:        "name",
-			Usage:       "Provide peer name, It must be also present in the config, linked to an address",
-			Required:    true,
-			Destination: &flagValues.Name,
-			Aliases:     []string{"n"},
-		},
-		&cli.PathFlag{
-			Name:        "config",
-			DefaultText: "By default embedded config.json is loaded",
-			Usage:       "Load configuration from 'FILE'",
-			Destination: &flagValues.Path,
-			Aliases:     []string{"c"},
-			TakesFile:   true,
-		},
-	}
 }
