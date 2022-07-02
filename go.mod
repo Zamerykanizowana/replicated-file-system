@@ -9,6 +9,7 @@ require (
 	go.nanomsg.org/mangos/v3 v3.4.1
 	go.uber.org/multierr v1.6.0
 	go.uber.org/zap v1.21.0
+	google.golang.org/protobuf v1.28.0
 )
 
 require (
