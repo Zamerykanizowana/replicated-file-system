@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"go.uber.org/multierr"
-	"go.uber.org/zap"
 )
 
 //go:embed config.json
@@ -25,15 +25,15 @@ func Default() *Config {
 func Read(path string) *Config {
 	f, err := os.Open(path)
 	if err != nil {
-		zap.L().
-			With(zap.String("filepath", path)).
-			Fatal("failed to open config file", zap.Error(err))
+		log.Fatal().Err(err).
+			Str("filepath", path).
+			Msg("failed to open config file")
 	}
 	raw, err := io.ReadAll(f)
 	if err != nil {
-		zap.L().
-			With(zap.String("filepath", path)).
-			Fatal("failed to read config file contents", zap.Error(err))
+		log.Fatal().Err(err).
+			Str("filepath", path).
+			Msg("failed to read config file contents")
 	}
 	return mustUnmarshalConfig(raw)
 }
@@ -89,12 +89,14 @@ func mustUnmarshalConfig(raw []byte) *Config {
 		err    error
 	)
 	if err = json.Unmarshal(raw, &config); err != nil {
-		zap.L().Fatal("failed to read config.json", zap.Error(err))
+		log.Fatal().Err(err).Msg("failed to read config.json")
 	}
 	for _, path := range []*string{&config.Paths.FuseDir, &config.Paths.MirrorDir} {
 		*path, err = expandHome(*path)
 		if err != nil {
-			zap.L().Fatal("failed to expand home", zap.Error(err))
+			log.Fatal().Err(err).
+				Str("path", *path).
+				Msg("failed to expand home")
 		}
 	}
 	return &config

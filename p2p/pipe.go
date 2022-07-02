@@ -1,8 +1,8 @@
 package p2p
 
 import (
+	"github.com/rs/zerolog/log"
 	"go.nanomsg.org/mangos/v3"
-	"go.uber.org/zap"
 )
 
 func (p *Peer) pipeEventHook(event mangos.PipeEvent, pipe mangos.Pipe) {
@@ -18,5 +18,5 @@ func (p *Peer) pipeEventHook(event mangos.PipeEvent, pipe mangos.Pipe) {
 	case mangos.PipeEventDetached:
 		msg = "peer detached"
 	}
-	zap.L().Debug(msg, zap.Object("peer", p.peerConfigForAddress(pipe.Address())))
+	log.Debug().Interface("peer", p.peerConfigForAddress(pipe.Address())).Msg(msg)
 }

@@ -7,7 +7,7 @@ import (
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"go.uber.org/zap"
+	"github.com/rs/zerolog/log"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
@@ -35,13 +35,9 @@ func (r *RfsFuseServer) Mount() error {
 }
 
 func (r *RfsFuseServer) Wait() {
-	zap.L().Info(
-		"unmount by calling",
-		zap.String(
-			"cmd",
-			fmt.Sprintf("fusermount -u %s", r.Config.Paths.FuseDir),
-		),
-	)
+	log.Info().
+		Str("cmd", fmt.Sprintf("fusermount -u %s", r.Config.Paths.FuseDir)).
+		Msg("unmount by calling")
 
 	// Wait until user unmounts FS
 	r.Server.Wait()
@@ -49,7 +45,7 @@ func (r *RfsFuseServer) Wait() {
 
 func NewRfsFuseServer(c config.Config) *RfsFuseServer {
 	if err := os.MkdirAll(c.Paths.FuseDir, 0777); err != nil {
-		zap.L().Fatal("unable to create local directory", zap.Error(err))
+		log.Fatal().Err(err).Msg("unable to create local directory")
 	}
 
 	root := &fs.LoopbackRoot{

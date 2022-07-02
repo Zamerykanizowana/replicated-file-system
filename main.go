@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
-	"go.uber.org/zap"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
@@ -62,7 +62,7 @@ func main() {
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
-		zap.L().Fatal(err.Error())
+		log.Fatal().Err(err).Send()
 	}
 }
 
@@ -83,8 +83,11 @@ func runP2P(cfg *config.Config) error {
 }
 
 func runRFS(cfg *config.Config) error {
-	zap.L().Info("Hello!", zap.String("commit", commit), zap.String("branch", branch))
-	zap.L().Info("Initializing FS", zap.String("local_path", cfg.Paths.FuseDir))
+	log.Info().
+		Str("commit", commit).
+		Str("branch", branch).
+		Str("local_path", cfg.Paths.FuseDir).
+		Msg("Initializing FS")
 
 	server := rfs.NewRfsFuseServer(*cfg)
 
@@ -105,7 +108,7 @@ func mustReadConfig() *config.Config {
 		cfg = config.Read(flagValues.Path)
 	}
 	if err := cfg.Validate(); err != nil {
-		zap.L().Panic(err.Error())
+		log.Panic().Err(err).Send()
 	}
 	return cfg
 }
