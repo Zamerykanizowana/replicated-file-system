@@ -79,7 +79,7 @@ func runP2P(cfg *config.Config) error {
 	if selfConfig == nil {
 		return fmt.Errorf("peer with name %s was not found", flagValues.Name)
 	}
-	return p2p.Run(selfConfig, peersConfig)
+	return p2p.NewPeer(selfConfig, peersConfig).Run()
 }
 
 func runRFS(cfg *config.Config) error {

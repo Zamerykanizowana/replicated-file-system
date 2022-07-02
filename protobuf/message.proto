@@ -3,7 +3,12 @@ package message;
 
 option go_package = "github.com/Zamerykanizowana/replicated-file-system/protobuf";
 
-message Message {
-  string content = 1;
+enum MessageType {
+  DIAL = 0;
 }
 
+message Message {
+  string peer_name = 1;
+  MessageType type = 2;
+  string content = 3;
+}

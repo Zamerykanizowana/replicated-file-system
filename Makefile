@@ -1,12 +1,16 @@
 MAKEFLAGS += --no-print-directory
 
+APP_NAME = rfs
+OUT = ./bin/${APP_NAME}
+
+GIT_COMMIT = $(shell git rev-parse --short=8 HEAD)
+GIT_BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
+
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
-LDFLAGS := \
-	-X main.commit=$(shell git rev-parse --short=8 HEAD) \
-	-X main.branch=$(shell git rev-parse --abbrev-ref HEAD)
+LDFLAGS := -X main.commit=${GIT_COMMIT} -X main.branch=${GIT_BRANCH}
 
-OUT=build/rfs
+DOCKER_IMAGE = "${APP_NAME}:${GIT_BRANCH}-${GIT_COMMIT}"
 
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
@@ -17,14 +21,32 @@ all: build run
 run:
 	./${OUT}
 
+# Provide the name of the Fellowship member as the target variable.
+run/docker/%:
+	docker run \
+		--rm -it \
+		--name "${APP_NAME}-$(*F)" \
+		-e "PEER_NAME=$(*F)" \
+		${DOCKER_IMAGE}
+
 run/parallel:
-	jq -r '.peers | .[].name' config/config.json | parallel ./build/rfs -n {} | jq
+	jq -r '.peers | .[].name' config/config.json | parallel ./${OUT} -n {} | jq
 
 build:
 	mkdir -p build
 	go build -ldflags "${LDFLAGS}" -o ${OUT} main.go
 
-build-full: go/generate go/format go/verify go/test build
+build/full: go/generate go/format go/verify go/test build
+
+build/docker:
+	DOCKER_BUILDKIT=1 \
+	docker build \
+		--file "${PWD}/Dockerfile" \
+		--tag ${DOCKER_IMAGE} \
+		--build-arg APP_NAME="${APP_NAME}" \
+		--build-arg LDFLAGS="${LDFLAGS}" \
+		--progress=auto \
+		"${PWD}"
 
 go/generate:
 	go generate ./...
