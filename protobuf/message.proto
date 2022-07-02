@@ -6,6 +6,7 @@ option go_package = "github.com/Zamerykanizowana/replicated-file-system/protobuf
 message Message {
   string peer_name = 1;
   Type type = 2;
+  bytes content = 3;
 
   enum Type {
     REPLICATE = 0;
