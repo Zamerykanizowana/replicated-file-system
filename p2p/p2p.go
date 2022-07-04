@@ -6,11 +6,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/bus"
 	_ "go.nanomsg.org/mangos/v3/transport/tcp"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
@@ -105,25 +104,27 @@ func (p *Peer) listen() {
 	for {
 		raw, err := p.sock.Recv()
 		if err != nil {
-			zap.L().Error("failed to receive message", zap.Error(err))
+			log.Err(err).Msg("failed to receive message")
 			continue
 		}
 		var msg protobuf.Message
 		if err = proto.Unmarshal(raw, &msg); err != nil {
-			zap.L().Error("failed to unmarshal protobuf message", zap.Error(err))
+			log.Err(err).Msg("failed to unmarshal protobuf message")
 			continue
 		}
-		zap.L().Info("received message",
-			zap.String("from", msg.PeerName),
-			zap.String("type", msg.Type.String()),
-			zap.ByteString("content", msg.Content))
+		log.Info().
+			Str("from", msg.PeerName).
+			Str("type", msg.Type.String()).
+			Msg("received message")
 	}
 }
 
 func (p *Peer) peerConfigForAddress(address string) peerConfig {
 	pc, found := p.Peers[address]
 	if !found {
-		zap.L().Error("peer was not found on peers list", zap.String("address", address))
+		log.Error().
+			Str("address", address).
+			Msg("peer was not found on peers list")
 	}
 	return pc
 }
@@ -131,12 +132,6 @@ func (p *Peer) peerConfigForAddress(address string) peerConfig {
 type peerConfig struct {
 	Address string
 	Name    string
-}
-
-func (p peerConfig) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	enc.AddString("address", p.Address)
-	enc.AddString("name", p.Name)
-	return nil
 }
 
 func buildURL(cfg *config.PeerConfig) *url.URL {
