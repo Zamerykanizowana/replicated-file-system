@@ -11,6 +11,7 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p"
+	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 	"github.com/Zamerykanizowana/replicated-file-system/rfs"
 )
 
@@ -67,6 +68,7 @@ func main() {
 }
 
 func runP2P(cfg *config.Config) error {
+	protobuf.SetCompression("DefaultCompression")
 	var selfConfig *config.PeerConfig
 	peersConfig := make([]*config.PeerConfig, 0, len(cfg.Peers)-1)
 	for _, p := range cfg.Peers {
@@ -79,7 +81,7 @@ func runP2P(cfg *config.Config) error {
 	if selfConfig == nil {
 		return fmt.Errorf("peer with name %s was not found", flagValues.Name)
 	}
-	return p2p.NewPeer(selfConfig, peersConfig).Run()
+	return p2p.NewNode(selfConfig, peersConfig).Run()
 }
 
 func runRFS(cfg *config.Config) error {
