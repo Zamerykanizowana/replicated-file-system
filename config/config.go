@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -16,10 +17,10 @@ import (
 )
 
 //go:embed config.json
-var rawConfig []byte
+var defaultConfig []byte
 
 func Default() *Config {
-	return mustUnmarshalConfig(rawConfig)
+	return mustUnmarshalConfig(defaultConfig)
 }
 
 func Read(path string) *Config {
@@ -38,34 +39,36 @@ func Read(path string) *Config {
 	return mustUnmarshalConfig(raw)
 }
 
-func expandHome(path string) (string, error) {
-	usr, _ := user.Current()
-
-	if path == "~" {
-		return "", errors.New("Mirroring home directory directly is not allowed!")
-	} else if strings.HasPrefix(path, "~/") {
-		return filepath.Join(usr.HomeDir, path[2:]), nil
-	} else {
-		return path, nil
-	}
-}
-
 type (
 	Config struct {
-		Peers []*PeerConfig
-		Paths struct {
-			FuseDir   string `json:"fuse_dir"`
-			MirrorDir string `json:"mirror_dir"`
-		} `json:"paths"`
+		Peers           []*Peer
+		Paths           Paths
+		TransportScheme string
 	}
-	PeerConfig struct {
-		Host string `json:"host"`
-		Name string `json:"name"`
-		Port uint   `json:"port"`
+	Peer struct {
+		Name    string
+		Address string
+	}
+	Paths struct {
+		FuseDir   string
+		MirrorDir string
 	}
 )
 
-func (c Config) Validate() (err error) {
+type rawConfig struct {
+	Peers []struct {
+		Host string `json:"host"`
+		Port uint   `json:"port"`
+		Name string `json:"name"`
+	} `json:"peers"`
+	Paths struct {
+		FuseDir   string `json:"fuse_dir"`
+		MirrorDir string `json:"mirror_dir"`
+	} `json:"paths"`
+	TransportScheme string `json:"transport_scheme"`
+}
+
+func (c rawConfig) Validate() (err error) {
 	if len(c.Peers) == 0 {
 		err = multierr.Append(err, errors.New("provide at least one peer config"))
 	}
@@ -80,18 +83,21 @@ func (c Config) Validate() (err error) {
 			err = multierr.Append(err, fmt.Errorf("port must be greater than 0 for peer: %v", p))
 		}
 	}
+	if c.TransportScheme != "tcp" {
+		err = multierr.Append(err, errors.New("only 'tcp' scheme is supported now"))
+	}
 	return
 }
 
 func mustUnmarshalConfig(raw []byte) *Config {
 	var (
-		config Config
-		err    error
+		rc  rawConfig
+		err error
 	)
-	if err = json.Unmarshal(raw, &config); err != nil {
+	if err = json.Unmarshal(raw, &rc); err != nil {
 		log.Fatal().Err(err).Msg("failed to read config.json")
 	}
-	for _, path := range []*string{&config.Paths.FuseDir, &config.Paths.MirrorDir} {
+	for _, path := range []*string{&rc.Paths.FuseDir, &rc.Paths.MirrorDir} {
 		*path, err = expandHome(*path)
 		if err != nil {
 			log.Fatal().Err(err).
@@ -99,5 +105,46 @@ func mustUnmarshalConfig(raw []byte) *Config {
 				Msg("failed to expand home")
 		}
 	}
-	return &config
+	if err = rc.Validate(); err != nil {
+		log.Fatal().Err(err).Msg("validation failed for config")
+	}
+
+	peers := make([]*Peer, 0, len(rc.Peers))
+	for _, p := range rc.Peers {
+		peers = append(peers, &Peer{
+			Name:    p.Name,
+			Address: mustBuildAddress(rc.TransportScheme, p.Host, p.Port),
+		})
+	}
+	return &Config{
+		Peers:           peers,
+		Paths:           Paths(rc.Paths),
+		TransportScheme: rc.TransportScheme,
+	}
+}
+
+func mustBuildAddress(network, host string, port uint) string {
+	address := fmt.Sprintf("%s:%d", host, port)
+	tcpAddr, err := net.ResolveTCPAddr(network, address)
+	if err != nil {
+		log.Panic().
+			Err(err).
+			Str("network", network).
+			Str("host", host).
+			Uint("port", port).
+			Msg("failed to resolve TCP address")
+	}
+	return tcpAddr.String()
+}
+
+func expandHome(path string) (string, error) {
+	usr, _ := user.Current()
+
+	if path == "~" {
+		return "", errors.New("Mirroring home directory directly is not allowed!")
+	} else if strings.HasPrefix(path, "~/") {
+		return filepath.Join(usr.HomeDir, path[2:]), nil
+	} else {
+		return path, nil
+	}
 }

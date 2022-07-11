@@ -1,4 +1,4 @@
-package p2p
+package connection
 
 import "strings"
 
@@ -16,6 +16,6 @@ func (s SendMultiErr) Error() string {
 	return b.String()[:b.Len()-2]
 }
 
-func (s SendMultiErr) Append(addr string, err error) {
-	s[addr] = err
+func (s SendMultiErr) Append(peerName string, err error) {
+	s[peerName] = err
 }

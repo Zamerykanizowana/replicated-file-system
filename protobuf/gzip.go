@@ -50,12 +50,12 @@ func decompress(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create gzip.Reader for provided data")
 	}
-	buf := make([]byte, len(data)*130/100)
-	if _, err = io.ReadFull(r, buf); err != nil {
+	data, err = io.ReadAll(r)
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to read data through gzip.Reader")
 	}
 	if err = r.Close(); err != nil {
 		return nil, errors.Wrap(err, "failed to close gzip.Reader, can't finalize the decompression")
 	}
-	return buf, nil
+	return data, nil
 }
