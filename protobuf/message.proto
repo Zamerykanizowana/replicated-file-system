@@ -4,6 +4,7 @@ package message;
 option go_package = "github.com/Zamerykanizowana/replicated-file-system/protobuf";
 
 message Message {
+  // tid is transaction id.
   string tid = 1;
   string peer_name = 2;
   oneof type {

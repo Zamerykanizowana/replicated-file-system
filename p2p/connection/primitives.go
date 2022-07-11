@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"syscall"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -46,11 +45,6 @@ func closeConn(conn net.Conn) {
 		return
 	}
 	if err := conn.Close(); err != nil {
-		if err == syscall.EINVAL {
-			log.Warn().
-				Stringer("remote_addr", conn.RemoteAddr()).
-				Msg("connection was already closed")
-		}
 		log.Err(err).
 			Stringer("remote_addr", conn.RemoteAddr()).
 			Msg("failed to closed connection")
