@@ -1,4 +1,5 @@
 {
+  "transport_scheme": "tcp",
   "peers": [
     {
       "host": "localhost",

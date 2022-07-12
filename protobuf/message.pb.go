@@ -20,50 +20,142 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type Message_Type int32
+type Request_Type int32
 
 const (
-	Message_REPLICATE Message_Type = 0
-	Message_SYNC      Message_Type = 1
+	Request_CREATE Request_Type = 0
+	Request_MODIFY Request_Type = 1
+	Request_DELETE Request_Type = 2
 )
 
-// Enum value maps for Message_Type.
+// Enum value maps for Request_Type.
 var (
-	Message_Type_name = map[int32]string{
-		0: "REPLICATE",
-		1: "SYNC",
+	Request_Type_name = map[int32]string{
+		0: "CREATE",
+		1: "MODIFY",
+		2: "DELETE",
 	}
-	Message_Type_value = map[string]int32{
-		"REPLICATE": 0,
-		"SYNC":      1,
+	Request_Type_value = map[string]int32{
+		"CREATE": 0,
+		"MODIFY": 1,
+		"DELETE": 2,
 	}
 )
 
-func (x Message_Type) Enum() *Message_Type {
-	p := new(Message_Type)
+func (x Request_Type) Enum() *Request_Type {
+	p := new(Request_Type)
 	*p = x
 	return p
 }
 
-func (x Message_Type) String() string {
+func (x Request_Type) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (Message_Type) Descriptor() protoreflect.EnumDescriptor {
+func (Request_Type) Descriptor() protoreflect.EnumDescriptor {
 	return file_message_proto_enumTypes[0].Descriptor()
 }
 
-func (Message_Type) Type() protoreflect.EnumType {
+func (Request_Type) Type() protoreflect.EnumType {
 	return &file_message_proto_enumTypes[0]
 }
 
-func (x Message_Type) Number() protoreflect.EnumNumber {
+func (x Request_Type) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use Message_Type.Descriptor instead.
-func (Message_Type) EnumDescriptor() ([]byte, []int) {
-	return file_message_proto_rawDescGZIP(), []int{0, 0}
+// Deprecated: Use Request_Type.Descriptor instead.
+func (Request_Type) EnumDescriptor() ([]byte, []int) {
+	return file_message_proto_rawDescGZIP(), []int{1, 0}
+}
+
+type Response_Type int32
+
+const (
+	Response_ACK  Response_Type = 0
+	Response_NACK Response_Type = 1
+)
+
+// Enum value maps for Response_Type.
+var (
+	Response_Type_name = map[int32]string{
+		0: "ACK",
+		1: "NACK",
+	}
+	Response_Type_value = map[string]int32{
+		"ACK":  0,
+		"NACK": 1,
+	}
+)
+
+func (x Response_Type) Enum() *Response_Type {
+	p := new(Response_Type)
+	*p = x
+	return p
+}
+
+func (x Response_Type) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Response_Type) Descriptor() protoreflect.EnumDescriptor {
+	return file_message_proto_enumTypes[1].Descriptor()
+}
+
+func (Response_Type) Type() protoreflect.EnumType {
+	return &file_message_proto_enumTypes[1]
+}
+
+func (x Response_Type) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Response_Type.Descriptor instead.
+func (Response_Type) EnumDescriptor() ([]byte, []int) {
+	return file_message_proto_rawDescGZIP(), []int{2, 0}
+}
+
+type Response_Error int32
+
+const (
+	Response_ERR_ALREADY_EXISTS Response_Error = 0
+)
+
+// Enum value maps for Response_Error.
+var (
+	Response_Error_name = map[int32]string{
+		0: "ERR_ALREADY_EXISTS",
+	}
+	Response_Error_value = map[string]int32{
+		"ERR_ALREADY_EXISTS": 0,
+	}
+)
+
+func (x Response_Error) Enum() *Response_Error {
+	p := new(Response_Error)
+	*p = x
+	return p
+}
+
+func (x Response_Error) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Response_Error) Descriptor() protoreflect.EnumDescriptor {
+	return file_message_proto_enumTypes[2].Descriptor()
+}
+
+func (Response_Error) Type() protoreflect.EnumType {
+	return &file_message_proto_enumTypes[2]
+}
+
+func (x Response_Error) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Response_Error.Descriptor instead.
+func (Response_Error) EnumDescriptor() ([]byte, []int) {
+	return file_message_proto_rawDescGZIP(), []int{2, 1}
 }
 
 type Message struct {
@@ -71,9 +163,12 @@ type Message struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	PeerName string       `protobuf:"bytes,1,opt,name=peer_name,json=peerName,proto3" json:"peer_name,omitempty"`
-	Type     Message_Type `protobuf:"varint,2,opt,name=type,proto3,enum=message.Message_Type" json:"type,omitempty"`
-	Content  []byte       `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	Tid      string `protobuf:"bytes,1,opt,name=tid,proto3" json:"tid,omitempty"`
+	PeerName string `protobuf:"bytes,2,opt,name=peer_name,json=peerName,proto3" json:"peer_name,omitempty"`
+	// Types that are assignable to Type:
+	//	*Message_Request
+	//	*Message_Response
+	Type isMessage_Type `protobuf_oneof:"type"`
 }
 
 func (x *Message) Reset() {
@@ -108,6 +203,13 @@ func (*Message) Descriptor() ([]byte, []int) {
 	return file_message_proto_rawDescGZIP(), []int{0}
 }
 
+func (x *Message) GetTid() string {
+	if x != nil {
+		return x.Tid
+	}
+	return ""
+}
+
 func (x *Message) GetPeerName() string {
 	if x != nil {
 		return x.PeerName
@@ -115,38 +217,242 @@ func (x *Message) GetPeerName() string {
 	return ""
 }
 
-func (x *Message) GetType() Message_Type {
+func (m *Message) GetType() isMessage_Type {
+	if m != nil {
+		return m.Type
+	}
+	return nil
+}
+
+func (x *Message) GetRequest() *Request {
+	if x, ok := x.GetType().(*Message_Request); ok {
+		return x.Request
+	}
+	return nil
+}
+
+func (x *Message) GetResponse() *Response {
+	if x, ok := x.GetType().(*Message_Response); ok {
+		return x.Response
+	}
+	return nil
+}
+
+type isMessage_Type interface {
+	isMessage_Type()
+}
+
+type Message_Request struct {
+	Request *Request `protobuf:"bytes,3,opt,name=request,proto3,oneof"`
+}
+
+type Message_Response struct {
+	Response *Response `protobuf:"bytes,4,opt,name=response,proto3,oneof"`
+}
+
+func (*Message_Request) isMessage_Type() {}
+
+func (*Message_Response) isMessage_Type() {}
+
+type Request struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Type    Request_Type `protobuf:"varint,1,opt,name=type,proto3,enum=message.Request_Type" json:"type,omitempty"`
+	Content []byte       `protobuf:"bytes,2,opt,name=content,proto3,oneof" json:"content,omitempty"`
+}
+
+func (x *Request) Reset() {
+	*x = Request{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_message_proto_msgTypes[1]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *Request) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Request) ProtoMessage() {}
+
+func (x *Request) ProtoReflect() protoreflect.Message {
+	mi := &file_message_proto_msgTypes[1]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Request.ProtoReflect.Descriptor instead.
+func (*Request) Descriptor() ([]byte, []int) {
+	return file_message_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Request) GetType() Request_Type {
 	if x != nil {
 		return x.Type
 	}
-	return Message_REPLICATE
+	return Request_CREATE
 }
 
-func (x *Message) GetContent() []byte {
+func (x *Request) GetContent() []byte {
 	if x != nil {
 		return x.Content
 	}
 	return nil
 }
 
+type Response struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Type  Response_Type   `protobuf:"varint,1,opt,name=type,proto3,enum=message.Response_Type" json:"type,omitempty"`
+	Error *Response_Error `protobuf:"varint,2,opt,name=error,proto3,enum=message.Response_Error,oneof" json:"error,omitempty"`
+}
+
+func (x *Response) Reset() {
+	*x = Response{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_message_proto_msgTypes[2]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *Response) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Response) ProtoMessage() {}
+
+func (x *Response) ProtoReflect() protoreflect.Message {
+	mi := &file_message_proto_msgTypes[2]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Response.ProtoReflect.Descriptor instead.
+func (*Response) Descriptor() ([]byte, []int) {
+	return file_message_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Response) GetType() Response_Type {
+	if x != nil {
+		return x.Type
+	}
+	return Response_ACK
+}
+
+func (x *Response) GetError() Response_Error {
+	if x != nil && x.Error != nil {
+		return *x.Error
+	}
+	return Response_ERR_ALREADY_EXISTS
+}
+
+type Handshake struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	PeerName string `protobuf:"bytes,1,opt,name=peer_name,json=peerName,proto3" json:"peer_name,omitempty"`
+}
+
+func (x *Handshake) Reset() {
+	*x = Handshake{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_message_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *Handshake) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Handshake) ProtoMessage() {}
+
+func (x *Handshake) ProtoReflect() protoreflect.Message {
+	mi := &file_message_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Handshake.ProtoReflect.Descriptor instead.
+func (*Handshake) Descriptor() ([]byte, []int) {
+	return file_message_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Handshake) GetPeerName() string {
+	if x != nil {
+		return x.PeerName
+	}
+	return ""
+}
+
 var File_message_proto protoreflect.FileDescriptor
 
 var file_message_proto_rawDesc = []byte{
 	0x0a, 0x0d, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x12,
-	0x07, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22, 0x8c, 0x01, 0x0a, 0x07, 0x4d, 0x65, 0x73,
-	0x73, 0x61, 0x67, 0x65, 0x12, 0x1b, 0x0a, 0x09, 0x70, 0x65, 0x65, 0x72, 0x5f, 0x6e, 0x61, 0x6d,
-	0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x70, 0x65, 0x65, 0x72, 0x4e, 0x61, 0x6d,
-	0x65, 0x12, 0x29, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0e, 0x32,
-	0x15, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x2e, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67,
-	0x65, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x52, 0x04, 0x74, 0x79, 0x70, 0x65, 0x12, 0x18, 0x0a, 0x07,
-	0x63, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x07, 0x63,
-	0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x22, 0x1f, 0x0a, 0x04, 0x54, 0x79, 0x70, 0x65, 0x12, 0x0d,
-	0x0a, 0x09, 0x52, 0x45, 0x50, 0x4c, 0x49, 0x43, 0x41, 0x54, 0x45, 0x10, 0x00, 0x12, 0x08, 0x0a,
-	0x04, 0x53, 0x59, 0x4e, 0x43, 0x10, 0x01, 0x42, 0x3d, 0x5a, 0x3b, 0x67, 0x69, 0x74, 0x68, 0x75,
-	0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x5a, 0x61, 0x6d, 0x65, 0x72, 0x79, 0x6b, 0x61, 0x6e, 0x69,
-	0x7a, 0x6f, 0x77, 0x61, 0x6e, 0x61, 0x2f, 0x72, 0x65, 0x70, 0x6c, 0x69, 0x63, 0x61, 0x74, 0x65,
-	0x64, 0x2d, 0x66, 0x69, 0x6c, 0x65, 0x2d, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x2f, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x07, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22, 0x9f, 0x01, 0x0a, 0x07, 0x4d, 0x65, 0x73,
+	0x73, 0x61, 0x67, 0x65, 0x12, 0x10, 0x0a, 0x03, 0x74, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x03, 0x74, 0x69, 0x64, 0x12, 0x1b, 0x0a, 0x09, 0x70, 0x65, 0x65, 0x72, 0x5f, 0x6e,
+	0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x70, 0x65, 0x65, 0x72, 0x4e,
+	0x61, 0x6d, 0x65, 0x12, 0x2c, 0x0a, 0x07, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x18, 0x03,
+	0x20, 0x01, 0x28, 0x0b, 0x32, 0x10, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x2e, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x48, 0x00, 0x52, 0x07, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x12, 0x2f, 0x0a, 0x08, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x18, 0x04, 0x20,
+	0x01, 0x28, 0x0b, 0x32, 0x11, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x2e, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x48, 0x00, 0x52, 0x08, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x42, 0x06, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x22, 0x8b, 0x01, 0x0a, 0x07, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x29, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x0e, 0x32, 0x15, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x2e, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x52, 0x04, 0x74, 0x79, 0x70,
+	0x65, 0x12, 0x1d, 0x0a, 0x07, 0x63, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x18, 0x02, 0x20, 0x01,
+	0x28, 0x0c, 0x48, 0x00, 0x52, 0x07, 0x63, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x88, 0x01, 0x01,
+	0x22, 0x2a, 0x0a, 0x04, 0x54, 0x79, 0x70, 0x65, 0x12, 0x0a, 0x0a, 0x06, 0x43, 0x52, 0x45, 0x41,
+	0x54, 0x45, 0x10, 0x00, 0x12, 0x0a, 0x0a, 0x06, 0x4d, 0x4f, 0x44, 0x49, 0x46, 0x59, 0x10, 0x01,
+	0x12, 0x0a, 0x0a, 0x06, 0x44, 0x45, 0x4c, 0x45, 0x54, 0x45, 0x10, 0x02, 0x42, 0x0a, 0x0a, 0x08,
+	0x5f, 0x63, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x22, 0xb0, 0x01, 0x0a, 0x08, 0x52, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2a, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x0e, 0x32, 0x16, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x2e, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x52, 0x04, 0x74, 0x79, 0x70,
+	0x65, 0x12, 0x32, 0x0a, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0e,
+	0x32, 0x17, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x2e, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x2e, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x48, 0x00, 0x52, 0x05, 0x65, 0x72, 0x72,
+	0x6f, 0x72, 0x88, 0x01, 0x01, 0x22, 0x19, 0x0a, 0x04, 0x54, 0x79, 0x70, 0x65, 0x12, 0x07, 0x0a,
+	0x03, 0x41, 0x43, 0x4b, 0x10, 0x00, 0x12, 0x08, 0x0a, 0x04, 0x4e, 0x41, 0x43, 0x4b, 0x10, 0x01,
+	0x22, 0x1f, 0x0a, 0x05, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x12, 0x16, 0x0a, 0x12, 0x45, 0x52, 0x52,
+	0x5f, 0x41, 0x4c, 0x52, 0x45, 0x41, 0x44, 0x59, 0x5f, 0x45, 0x58, 0x49, 0x53, 0x54, 0x53, 0x10,
+	0x00, 0x42, 0x08, 0x0a, 0x06, 0x5f, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x22, 0x28, 0x0a, 0x09, 0x48,
+	0x61, 0x6e, 0x64, 0x73, 0x68, 0x61, 0x6b, 0x65, 0x12, 0x1b, 0x0a, 0x09, 0x70, 0x65, 0x65, 0x72,
+	0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x70, 0x65, 0x65,
+	0x72, 0x4e, 0x61, 0x6d, 0x65, 0x42, 0x3d, 0x5a, 0x3b, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e,
+	0x63, 0x6f, 0x6d, 0x2f, 0x5a, 0x61, 0x6d, 0x65, 0x72, 0x79, 0x6b, 0x61, 0x6e, 0x69, 0x7a, 0x6f,
+	0x77, 0x61, 0x6e, 0x61, 0x2f, 0x72, 0x65, 0x70, 0x6c, 0x69, 0x63, 0x61, 0x74, 0x65, 0x64, 0x2d,
+	0x66, 0x69, 0x6c, 0x65, 0x2d, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x2f, 0x70, 0x72, 0x6f, 0x74,
+	0x6f, 0x62, 0x75, 0x66, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -161,19 +467,28 @@ func file_message_proto_rawDescGZIP() []byte {
 	return file_message_proto_rawDescData
 }
 
-var file_message_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_message_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_message_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_message_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_message_proto_goTypes = []interface{}{
-	(Message_Type)(0), // 0: message.Message.Type
-	(*Message)(nil),   // 1: message.Message
+	(Request_Type)(0),   // 0: message.Request.Type
+	(Response_Type)(0),  // 1: message.Response.Type
+	(Response_Error)(0), // 2: message.Response.Error
+	(*Message)(nil),     // 3: message.Message
+	(*Request)(nil),     // 4: message.Request
+	(*Response)(nil),    // 5: message.Response
+	(*Handshake)(nil),   // 6: message.Handshake
 }
 var file_message_proto_depIdxs = []int32{
-	0, // 0: message.Message.type:type_name -> message.Message.Type
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	4, // 0: message.Message.request:type_name -> message.Request
+	5, // 1: message.Message.response:type_name -> message.Response
+	0, // 2: message.Request.type:type_name -> message.Request.Type
+	1, // 3: message.Response.type:type_name -> message.Response.Type
+	2, // 4: message.Response.error:type_name -> message.Response.Error
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_message_proto_init() }
@@ -194,14 +509,56 @@ func file_message_proto_init() {
 				return nil
 			}
 		}
+		file_message_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Request); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_message_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Response); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_message_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Handshake); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
+	file_message_proto_msgTypes[0].OneofWrappers = []interface{}{
+		(*Message_Request)(nil),
+		(*Message_Response)(nil),
+	}
+	file_message_proto_msgTypes[1].OneofWrappers = []interface{}{}
+	file_message_proto_msgTypes[2].OneofWrappers = []interface{}{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_message_proto_rawDesc,
-			NumEnums:      1,
-			NumMessages:   1,
+			NumEnums:      3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

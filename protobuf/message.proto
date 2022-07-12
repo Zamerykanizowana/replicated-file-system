@@ -4,12 +4,40 @@ package message;
 option go_package = "github.com/Zamerykanizowana/replicated-file-system/protobuf";
 
 message Message {
-  string peer_name = 1;
-  Type type = 2;
-  bytes content = 3;
+  // tid is transaction id.
+  string tid = 1;
+  string peer_name = 2;
+  oneof type {
+    Request request = 3;
+    Response response = 4;
+  }
+}
+
+message Request {
+  Type type = 1;
+  optional bytes content = 2;
 
   enum Type {
-    REPLICATE = 0;
-    SYNC = 1;
+    CREATE = 0;
+    MODIFY = 1;
+    DELETE = 2;
   }
+}
+
+message Response {
+  Type type = 1;
+  optional Error error = 2;
+
+  enum Type {
+    ACK = 0;
+    NACK = 1;
+  }
+
+  enum Error {
+    ERR_ALREADY_EXISTS = 0;
+  }
+}
+
+message Handshake {
+  string peer_name = 1;
 }

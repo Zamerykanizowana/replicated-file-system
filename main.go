@@ -11,7 +11,9 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p"
+	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 	"github.com/Zamerykanizowana/replicated-file-system/rfs"
+	"github.com/Zamerykanizowana/replicated-file-system/test"
 )
 
 var (
@@ -21,6 +23,7 @@ var (
 	flagValues = struct {
 		Name string
 		Path cli.Path
+		Test bool
 	}{}
 )
 
@@ -53,6 +56,11 @@ func main() {
 						Destination: &flagValues.Name,
 						Aliases:     []string{"n"},
 					},
+					&cli.BoolFlag{
+						Name:        "test",
+						Usage:       "Run P2P test.",
+						Destination: &flagValues.Test,
+					},
 				},
 			},
 			{
@@ -67,8 +75,9 @@ func main() {
 }
 
 func runP2P(cfg *config.Config) error {
-	var selfConfig *config.PeerConfig
-	peersConfig := make([]*config.PeerConfig, 0, len(cfg.Peers)-1)
+	protobuf.SetCompression("DefaultCompression")
+	var selfConfig *config.Peer
+	peersConfig := make([]*config.Peer, 0, len(cfg.Peers)-1)
 	for _, p := range cfg.Peers {
 		if p.Name == flagValues.Name {
 			selfConfig = p
@@ -79,7 +88,11 @@ func runP2P(cfg *config.Config) error {
 	if selfConfig == nil {
 		return fmt.Errorf("peer with name %s was not found", flagValues.Name)
 	}
-	return p2p.NewPeer(selfConfig, peersConfig).Run()
+	node := p2p.NewNode(selfConfig, peersConfig, cfg.TransportScheme)
+	if flagValues.Test {
+		return test.P2P(node)
+	}
+	return nil
 }
 
 func runRFS(cfg *config.Config) error {
@@ -106,9 +119,6 @@ func mustReadConfig() *config.Config {
 		cfg = config.Default()
 	default:
 		cfg = config.Read(flagValues.Path)
-	}
-	if err := cfg.Validate(); err != nil {
-		log.Panic().Err(err).Send()
 	}
 	return cfg
 }
