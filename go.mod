@@ -15,8 +15,6 @@ require (
 	google.golang.org/protobuf v1.28.0
 )
 
-replace go.nanomsg.org/mangos/v3 => /home/mhawrus/studies/sem8/praca_inzynierska/mangos
-
 require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect

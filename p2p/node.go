@@ -4,7 +4,6 @@ import (
 	_ "embed"
 
 	"github.com/pkg/errors"
-	_ "go.nanomsg.org/mangos/v3/transport/tcp"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
