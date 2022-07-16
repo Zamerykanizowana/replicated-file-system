@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -43,6 +44,7 @@ type (
 		Connection Connection `json:"connection"`
 		Peers      []*Peer    `json:"peers"`
 		Paths      Paths      `json:"paths"`
+		Logging    Logging    `json:"logging"`
 	}
 
 	Peer struct {
@@ -66,8 +68,8 @@ type (
 		MessageBufferSize uint `json:"message_buffer_size"`
 		// SendRecvTimeout sets the timeout for Recv and Send operations.
 		SendRecvTimeout time.Duration `json:"send_recv_timeout"`
-		// DialTimeout sets the timeout for dial operation.
-		DialTimeout time.Duration `json:"dial_timeout"`
+		// HandshakeTimeout sets the timeout for handshakes.
+		HandshakeTimeout time.Duration `json:"handshake_timeout"`
 		// Network is the transport scheme string, e.g. 'tcp'.
 		Network string `json:"network"`
 	}
@@ -85,7 +87,48 @@ type (
 		// be increased.
 		Max time.Duration `json:"max"`
 	}
+
+	Logging struct {
+		Level string `json:"level"`
+	}
 )
+
+func (c Config) MarshalZerologObject(e *zerolog.Event) {
+	e.Object("connection", c.Connection).
+		Object("paths", c.Paths).
+		Interface("peers", c.Peers).
+		Object("logging", c.Logging)
+}
+
+func (p Paths) MarshalZerologObject(e *zerolog.Event) {
+	e.Str("fuse_dir", p.FuseDir).
+		Str("mirror_dir", p.MirrorDir)
+}
+
+func (p Peer) MarshalZerologObject(e *zerolog.Event) {
+	e.Str("name", p.Name).
+		Str("address", p.Address)
+}
+
+func (c Connection) MarshalZerologObject(e *zerolog.Event) {
+	e.Object("backoff", c.DialBackoff).
+		Str("tls_version", c.TLSVersion).
+		Uint("message_buffer_size", c.MessageBufferSize).
+		Stringer("send_recv_timeout", c.SendRecvTimeout).
+		Stringer("handshake_timeout", c.HandshakeTimeout).
+		Str("network", c.Network)
+}
+
+func (b Backoff) MarshalZerologObject(e *zerolog.Event) {
+	e.Float64("factor", b.Factor).
+		Float64("max_factor_jitter", b.MaxFactorJitter).
+		Stringer("initial", b.Initial).
+		Stringer("max", b.Max)
+}
+
+func (l Logging) MarshalZerologObject(e *zerolog.Event) {
+	e.Str("level", l.Level)
+}
 
 var tlsVersions = map[string]uint16{
 	"1.0": tls.VersionTLS10,

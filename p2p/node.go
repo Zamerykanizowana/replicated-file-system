@@ -15,16 +15,12 @@ func NewNode(
 	self *config.Peer,
 	peersConfig []*config.Peer,
 	connConfig *config.Connection,
-) (*Node, error) {
+) *Node {
 	return &Node{
-		Name:    self.Name,
-		Address: self.Address,
-		connPool: connection.NewPool(
-			self.Address,
-			self.Name,
-			connConfig,
-			peersConfig),
-	}, nil
+		Name:     self.Name,
+		Address:  self.Address,
+		connPool: connection.NewPool(self, connConfig, peersConfig),
+	}
 }
 
 type Node struct {
@@ -33,11 +29,8 @@ type Node struct {
 	connPool *connection.Pool
 }
 
-func (n *Node) Run() error {
-	if err := n.connPool.Run(); err != nil {
-		return errors.Wrap(err, "failed to run connections pool")
-	}
-	return nil
+func (n *Node) Run() {
+	n.connPool.Run()
 }
 
 func (n *Node) Send(msg *protobuf.Message) error {

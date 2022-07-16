@@ -4,12 +4,16 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
 
 func NewBackoff(conf *config.Backoff) *Backoff {
 	return &Backoff{
 		Backoff: conf,
+		attempt: 0,
+		val:     conf.Initial,
 		rand:    rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
@@ -20,10 +24,10 @@ func NewBackoff(conf *config.Backoff) *Backoff {
 type Backoff struct {
 	*config.Backoff
 	// attempt is stored as float64 instead of an uint to avoid type conversion for math.Pow.
-	attempt          float64
-	previousDuration time.Duration
-	rand             *rand.Rand
-	timer            *time.Timer
+	attempt float64
+	val     time.Duration
+	rand    *rand.Rand
+	timer   *time.Timer
 }
 
 // Next blocks on the timer with the current Backoff duration.
@@ -35,20 +39,27 @@ func (b *Backoff) Next() {
 		b.timer = time.NewTimer(b.Initial)
 	default:
 		dur := b.next()
-		b.previousDuration = dur
+		b.val = dur
 		b.timer.Reset(dur)
 	}
 
 	<-b.timer.C
 }
 
+func (b *Backoff) MarshalZerologObject(e *zerolog.Event) {
+	e.Dict("backoff", zerolog.Dict().
+		EmbedObject(b.Backoff).
+		Float64("attempt", b.attempt).
+		Stringer("value", b.val))
+}
+
 func (b *Backoff) next() time.Duration {
 	// Fast path when max was already reached.
-	if b.previousDuration > b.Max {
+	if b.val > b.Max {
 		return b.Max
 	}
 
-	df := b.previousDuration.Seconds()
+	df := float64(b.val)
 
 	switch b.MaxFactorJitter {
 	case 0:
@@ -61,7 +72,7 @@ func (b *Backoff) next() time.Duration {
 		if jt>>1%2 == 0 {
 			jt = -jt
 		}
-		df *= b.Factor + (b.Factor * float64(jt))
+		df *= b.Factor + (b.Factor * float64(jt) / 100)
 	}
 
 	dur := time.Duration(df)
@@ -77,7 +88,7 @@ func (b *Backoff) next() time.Duration {
 // Reset restarts the current attempt counter at zero.
 func (b *Backoff) Reset() {
 	b.attempt = 0
-	b.previousDuration = b.Initial
+	b.val = b.Initial
 	if b.timer != nil {
 		if stop := b.timer.Stop(); !stop {
 			<-b.timer.C // Drain the channel.
