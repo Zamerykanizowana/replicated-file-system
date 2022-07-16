@@ -24,7 +24,7 @@ func SetCompression(cmp string) {
 	case "HuffmanOnly":
 		compressionLevel = gzip.HuffmanOnly
 	default:
-		log.Error().
+		log.Fatal().
 			Str("compression_level", cmp).
 			Msg("invalid compression level")
 	}

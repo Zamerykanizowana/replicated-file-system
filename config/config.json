@@ -10,7 +10,8 @@
     },
     "send_recv_timeout": 60000000000,
     "handshake_timeout": 30000000000,
-    "network": "tcp"
+    "network": "tcp",
+    "compression": "DefaultCompression"
   },
   "peers": [
     {
@@ -40,5 +41,5 @@
   },
   "logging": {
     "level": "info"
-  }
+  },
 }
