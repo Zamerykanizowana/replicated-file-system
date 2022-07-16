@@ -17,9 +17,10 @@ import (
 )
 
 var (
-	branch = "unknown-branch"
-	commit = "unknown-commit"
+	// These are set during build through ldflags.
+	branch, commit, peer string
 
+	// flagValues is a value holder for app flags.
 	flagValues = struct {
 		Name string
 		Path cli.Path
@@ -29,7 +30,7 @@ var (
 
 func main() {
 	logging.Configure()
-	cfg := mustReadConfig()
+	conf := mustReadConfig()
 
 	app := &cli.App{
 		Name:     "rfs",
@@ -44,10 +45,11 @@ func main() {
 				TakesFile:   true,
 			},
 		},
+		Action: func(context *cli.Context) error { return run() },
 		Commands: cli.Commands{
 			{
 				Name:   "p2p",
-				Action: func(context *cli.Context) error { return runP2P(cfg) },
+				Action: func(context *cli.Context) error { return runP2P(conf) },
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:        "name",
@@ -65,7 +67,7 @@ func main() {
 			},
 			{
 				Name:   "rfs",
-				Action: func(context *cli.Context) error { return runRFS(cfg) },
+				Action: func(context *cli.Context) error { return runRFS(conf) },
 			},
 		},
 	}
@@ -74,35 +76,46 @@ func main() {
 	}
 }
 
-func runP2P(cfg *config.Config) error {
+func run() error {
+	conf := mustReadConfig()
+	return runP2P(conf)
+}
+
+func runP2P(conf *config.Config) error {
 	protobuf.SetCompression("DefaultCompression")
+
+	if peer == "" {
+		peer = flagValues.Name
+	}
+
 	var selfConfig *config.Peer
-	peersConfig := make([]*config.Peer, 0, len(cfg.Peers)-1)
-	for _, p := range cfg.Peers {
-		if p.Name == flagValues.Name {
+	peersConfig := make([]*config.Peer, 0, len(conf.Peers)-1)
+	for _, p := range conf.Peers {
+		if p.Name == peer {
 			selfConfig = p
 			continue
 		}
 		peersConfig = append(peersConfig, p)
 	}
 	if selfConfig == nil {
-		return fmt.Errorf("peer with name %s was not found", flagValues.Name)
+		return fmt.Errorf("peer with name %s was not found", peer)
 	}
-	node := p2p.NewNode(selfConfig, peersConfig, cfg.TransportScheme)
-	if flagValues.Test {
-		return test.P2P(node)
+	node, err := p2p.NewNode(selfConfig, peersConfig, &conf.Connection)
+	if err != nil {
+		return err
 	}
-	return nil
+	return test.P2P(node)
 }
 
-func runRFS(cfg *config.Config) error {
+func runRFS(conf *config.Config) error {
 	log.Info().
 		Str("commit", commit).
 		Str("branch", branch).
-		Str("local_path", cfg.Paths.FuseDir).
+		Str("peer", peer).
+		Str("local_path", conf.Paths.FuseDir).
 		Msg("Initializing FS")
 
-	server := rfs.NewRfsFuseServer(*cfg)
+	server := rfs.NewRfsFuseServer(*conf)
 
 	if err := server.Mount(); err != nil {
 		return errors.Wrap(err, "unable to mount fuse filesystem")
@@ -113,12 +126,12 @@ func runRFS(cfg *config.Config) error {
 }
 
 func mustReadConfig() *config.Config {
-	var cfg *config.Config
+	var conf *config.Config
 	switch len(flagValues.Path) {
 	case 0:
-		cfg = config.Default()
+		conf = config.Default()
 	default:
-		cfg = config.Read(flagValues.Path)
+		conf = config.Read(flagValues.Path)
 	}
-	return cfg
+	return conf
 }

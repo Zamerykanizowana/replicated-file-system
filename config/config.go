@@ -1,19 +1,18 @@
 package config
 
 import (
+	"crypto/tls"
 	_ "embed"
 	"encoding/json"
-	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"go.uber.org/multierr"
 )
 
 //go:embed config.json
@@ -41,63 +40,73 @@ func Read(path string) *Config {
 
 type (
 	Config struct {
-		Peers           []*Peer
-		Paths           Paths
-		TransportScheme string
+		Connection Connection `json:"connection"`
+		Peers      []*Peer    `json:"peers"`
+		Paths      Paths      `json:"paths"`
 	}
-	Peer struct {
-		Name    string
-		Address string
-	}
-	Paths struct {
-		FuseDir   string
-		MirrorDir string
-	}
-)
 
-type rawConfig struct {
-	Peers []struct {
-		Host string `json:"host"`
-		Port uint   `json:"port"`
+	Peer struct {
+		// Name must be a unique identifier across all peers.
 		Name string `json:"name"`
-	} `json:"peers"`
+		// Address should be in form of a host:port, without the network scheme.
+		Address string `json:"address"`
+	}
+
 	Paths struct {
 		FuseDir   string `json:"fuse_dir"`
 		MirrorDir string `json:"mirror_dir"`
-	} `json:"paths"`
-	TransportScheme string `json:"transport_scheme"`
+	}
+
+	Connection struct {
+		DialBackoff *Backoff `json:"dial_backoff"`
+		// TLSVersion describes both max and mind TLS version in the tls.Config.
+		TLSVersion string `json:"tls_version"`
+		// MessageBufferSize is the buffer of the global message channel onto which
+		// goroutines listening on peer Connection push received messages.
+		MessageBufferSize uint `json:"message_buffer_size"`
+		// SendRecvTimeout sets the timeout for Recv and Send operations.
+		SendRecvTimeout time.Duration `json:"send_recv_timeout"`
+		// DialTimeout sets the timeout for dial operation.
+		DialTimeout time.Duration `json:"dial_timeout"`
+		// Network is the transport scheme string, e.g. 'tcp'.
+		Network string `json:"network"`
+	}
+
+	Backoff struct {
+		// Factor is the multiplying factor for each increment step.
+		Factor float64 `json:"factor"`
+		// MaxFactorJitter is the maximum factor jitter expressed in %.
+		// A value of 0.2 means we'll modify factor by 20%.
+		// Setting it to 0 will effectively turn jitter off.
+		MaxFactorJitter float64 `json:"max_factor_jitter"`
+		// Initial sets the initial value of the Backoff, which is not subject to jitter.
+		Initial time.Duration `json:"initial"`
+		// Max sets the maximum value after which reaching Backoff will no longer
+		// be increased.
+		Max time.Duration `json:"max"`
+	}
+)
+
+var tlsVersions = map[string]uint16{
+	"1.0": tls.VersionTLS10,
+	"1.1": tls.VersionTLS11,
+	"1.2": tls.VersionTLS12,
+	"1.3": tls.VersionTLS13,
 }
 
-func (c rawConfig) Validate() (err error) {
-	if len(c.Peers) == 0 {
-		err = multierr.Append(err, errors.New("provide at least one peer config"))
-	}
-	for _, p := range c.Peers {
-		if len(p.Host) == 0 {
-			err = multierr.Append(err, fmt.Errorf("host must not be empty for peer: %v", p))
-		}
-		if len(p.Name) == 0 {
-			err = multierr.Append(err, fmt.Errorf("name must not be empty for peer: %v", p))
-		}
-		if p.Port == 0 {
-			err = multierr.Append(err, fmt.Errorf("port must be greater than 0 for peer: %v", p))
-		}
-	}
-	if c.TransportScheme != "tcp" {
-		err = multierr.Append(err, errors.New("only 'tcp' scheme is supported now"))
-	}
-	return
+func (c Connection) GetTLSVersion() uint16 {
+	return tlsVersions[c.TLSVersion]
 }
 
 func mustUnmarshalConfig(raw []byte) *Config {
 	var (
-		rc  rawConfig
-		err error
+		conf Config
+		err  error
 	)
-	if err = json.Unmarshal(raw, &rc); err != nil {
+	if err = json.Unmarshal(raw, &conf); err != nil {
 		log.Fatal().Err(err).Msg("failed to read config.json")
 	}
-	for _, path := range []*string{&rc.Paths.FuseDir, &rc.Paths.MirrorDir} {
+	for _, path := range []*string{&conf.Paths.FuseDir, &conf.Paths.MirrorDir} {
 		*path, err = expandHome(*path)
 		if err != nil {
 			log.Fatal().Err(err).
@@ -105,40 +114,18 @@ func mustUnmarshalConfig(raw []byte) *Config {
 				Msg("failed to expand home")
 		}
 	}
-	if err = rc.Validate(); err != nil {
+	if err = conf.Validate(); err != nil {
 		log.Fatal().Err(err).Msg("validation failed for config")
 	}
 
-	peers := make([]*Peer, 0, len(rc.Peers))
-	for _, p := range rc.Peers {
-		peers = append(peers, &Peer{
-			Name:    p.Name,
-			Address: mustBuildAddress(rc.TransportScheme, p.Host, p.Port),
-		})
-	}
-	return &Config{
-		Peers:           peers,
-		Paths:           Paths(rc.Paths),
-		TransportScheme: rc.TransportScheme,
-	}
-}
-
-func mustBuildAddress(network, host string, port uint) string {
-	address := fmt.Sprintf("%s:%d", host, port)
-	tcpAddr, err := net.ResolveTCPAddr(network, address)
-	if err != nil {
-		log.Panic().
-			Err(err).
-			Str("network", network).
-			Str("host", host).
-			Uint("port", port).
-			Msg("failed to resolve TCP address")
-	}
-	return tcpAddr.String()
+	return &conf
 }
 
 func expandHome(path string) (string, error) {
-	usr, _ := user.Current()
+	usr, err := user.Current()
+	if err != nil {
+		return "", errors.Wrap(err, "failed to expand home")
+	}
 
 	if path == "~" {
 		return "", errors.New("Mirroring home directory directly is not allowed!")
