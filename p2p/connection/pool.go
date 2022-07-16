@@ -1,9 +1,9 @@
 package connection
 
 import (
+	"crypto/tls"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -11,31 +11,57 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
 
-func NewPool(network, address, name string, pcs []*config.Peer) *Pool {
-	msgs := make(chan message, 10000)
+func NewPool(
+	address, name string,
+	conf *config.Connection,
+	pcs []*config.Peer,
+) *Pool {
+	msgs := make(chan message, conf.MessageBufferSize)
+
+	whitelist := make(map[string]struct{}, len(pcs))
 	cs := make(map[string]*Connection, len(whitelist))
 	for _, p := range pcs {
-		cs[p.Name] = NewConnection(p.Name, p.Address, msgs)
+		whitelist[p.Name] = struct{}{}
+		cs[p.Name] = NewConnection(
+			p.Name, p.Address,
+			conf.SendRecvTimeout,
+			msgs)
 	}
-	return &Pool{
-		net:  network,
-		addr: address,
-		name: name,
-		cs:   cs,
-		// TODO make it configurable.
-		msgs:        msgs,
-		dialTimeout: 15 * time.Second,
+
+	pool := &Pool{
+		net:       conf.Network,
+		whitelist: whitelist,
+		name:      name,
+		cs:        cs,
+		msgs:      msgs,
 	}
+
+	tlsConf := tlsConfig(conf.GetTLSVersion())
+	tlsConf.VerifyConnection = pool.VerifyConnection
+
+	pool.dialer = &tls.Dialer{
+		NetDialer: &net.Dialer{Timeout: conf.DialTimeout},
+		Config:    tlsConf}
+
+	var err error
+	pool.listener, err = tls.Listen(pool.net, address, tlsConf)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create TLS listener")
+	}
+
+	return pool
 }
 
 type (
 	Pool struct {
-		net         string
-		addr        string
-		name        string
-		cs          map[string]*Connection
-		msgs        chan message
-		dialTimeout time.Duration
+		net           string
+		whitelist     map[string]struct{}
+		dialer        *tls.Dialer
+		listener      net.Listener
+		name          string
+		cs            map[string]*Connection
+		msgs          chan message
+		backoffConfig *config.Backoff
 	}
 	message struct {
 		data []byte
@@ -55,15 +81,18 @@ func (p *Pool) Send(data []byte) error {
 	var (
 		mErr SendMultiErr
 		wg   sync.WaitGroup
+		mu   sync.Mutex
 	)
 	wg.Add(len(p.cs))
 	for _, c := range p.cs {
 		go func(conn *Connection) {
 			if err := conn.Send(data); err != nil {
+				mu.Lock()
 				if mErr == nil {
 					mErr = make(SendMultiErr)
 				}
 				mErr[conn.peerName] = err
+				mu.Unlock()
 			}
 			wg.Done()
 		}(c)
@@ -81,11 +110,7 @@ func (p *Pool) Recv() ([]byte, error) {
 }
 
 func (p *Pool) listen() error {
-	listener, err := net.Listen(p.net, p.addr)
-	if err != nil {
-		return errors.Wrap(err, "failed to start listening for new connections")
-	}
-	go p.acceptConnections(listener)
+	go p.acceptConnections()
 
 	for _, c := range p.cs {
 		go c.Listen()
@@ -93,9 +118,9 @@ func (p *Pool) listen() error {
 	return nil
 }
 
-func (p *Pool) acceptConnections(listener net.Listener) {
+func (p *Pool) acceptConnections() {
 	for {
-		conn, err := listener.Accept()
+		conn, err := p.listener.Accept()
 		if err != nil {
 			log.Err(err).Msg("failed to accept incoming connection")
 			continue
@@ -104,41 +129,77 @@ func (p *Pool) acceptConnections(listener net.Listener) {
 	}
 }
 
+// dialAll simply runs dial for each peer's Connection in a separate goroutine.
 func (p *Pool) dialAll() {
 	for _, conn := range p.cs {
-		// We don't want to dial peers which are already connected.
-		// If conn is nil we've introduced a serious bug and should be punished.
-		// Connection struct is intended to be created once and only the underlying
-		// net.Conn might change in any way (including nillable).
-		if conn.status == StatusAlive {
-			continue
-		}
 		go p.dial(conn)
 	}
 }
 
+// dial performs status check before attempting to dial and adds connection to the Pool.
+// This function will run forever responding to connection being closed, in this case
+// it will attempt to dial again.
+// If the dial fails for whatever reason a Backoff mechanism is applied,
+// until successful or the Connection changes state to StatusAlive.
 func (p *Pool) dial(c *Connection) {
-	if c.status == StatusAlive {
-		return
+	backoff := NewBackoff(p.backoffConfig)
+	for {
+		if c.status == StatusAlive {
+			backoff.Reset()
+			c.WaitForClosed()
+		}
+		netConn, err := p.dialer.Dial(p.net, c.addr)
+		if err != nil {
+			c.log.Err(err).Msg("failed to dial connection")
+			backoff.Next()
+			continue
+		}
+		if added := p.add(netConn); !added {
+			backoff.Next()
+		}
 	}
-	d := net.Dialer{Timeout: p.dialTimeout}
-	conn, err := d.Dial(p.net, c.addr)
-	if err != nil {
-		c.log.Err(err).Msg("failed to dial connection")
-		return
-	}
-	p.add(conn)
 }
 
-func (p *Pool) add(conn net.Conn) {
-	peerName, err := handshake(conn, p.name)
-	if err != nil {
-		closeConn(conn)
-		log.Debug().Err(err).Msg("connection handshake failed")
+// add extracts peer name from x509.Certificate's Subject.SerialNumber.
+// It searches for the peer in cs and calls Connection.Establish.
+func (p *Pool) add(netConn net.Conn) (added bool) {
+	tlsConn, isTLS := netConn.(*tls.Conn)
+	if !isTLS {
+		log.Error().
+			Stringer("remote", netConn.RemoteAddr()).
+			Msg("closing non TLS connection")
+		closeConn(netConn)
 		return
 	}
-	if err = p.cs[peerName].Establish(conn); err != nil {
+
+	// At this point if this cert does not exist,
+	// we have done something very wrong code wise, thus no nil checks.
+	peerName := tlsConn.ConnectionState().PeerCertificates[0].Subject.SerialNumber
+	conn := p.cs[peerName]
+	if err := conn.Establish(netConn); err != nil {
 		log.Debug().Err(err).Msg("closing connection")
-		closeConn(conn)
+		closeConn(netConn)
+		return
 	}
+	return true
+}
+
+// VerifyConnection checks peer certificates, it expects a single cert
+// containing in the subject CN of the whitelisted peer.
+func (p *Pool) VerifyConnection(state tls.ConnectionState) error {
+	if len(state.PeerCertificates) != 1 {
+		return errors.Errorf("expected exactly one certificate, got %d", len(state.PeerCertificates))
+	}
+	var pn string
+	for _, crt := range state.PeerCertificates {
+		pn = crt.Subject.SerialNumber
+		if _, ok := p.whitelist[pn]; !ok {
+			return errors.Errorf(
+				"CN: %s is not authorized to participate in the peer network", pn)
+		}
+	}
+	if p.cs[pn].status == StatusAlive {
+		return errors.Errorf("connection between %s was already established", pn)
+	}
+	return nil
 }

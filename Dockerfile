@@ -10,21 +10,28 @@ RUN go mod download
 
 FROM go-dependencies-cache as builder
 
-ARG APP_NAME
+ARG USER
+
+RUN addgroup -S ${USER}
+RUN adduser -S ${USER} -G ${USER}
+
 ARG LDFLAGS
 
 WORKDIR /src
 
 COPY . .
 
-RUN go build -ldflags "${LDFLAGS}" -o "/artifacts/${APP_NAME}" "${PWD}"
+RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o "/artifacts/rfs" "${PWD}"
 
+FROM scratch
 
-FROM alpine:3.16.0
+ARG USER
 
-ARG APP_NAME
-ENV APP=${APP_NAME}
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
 
-COPY --from=builder "/artifacts/${APP_NAME}" /bin
+COPY --from=builder "/artifacts/rfs" /bin/rfs
 
-ENTRYPOINT ["sh", "-c", "$APP p2p -n $PEER_NAME"]
+USER ${USER}:${USER}
+
+ENTRYPOINT ["/bin/rfs"]

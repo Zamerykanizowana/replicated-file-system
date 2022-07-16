@@ -11,15 +11,20 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
-func NewNode(self *config.Peer, peersConfig []*config.Peer, transportScheme string) *Node {
-	for _, p := range peersConfig {
-		connection.Whitelist(p.Name)
-	}
+func NewNode(
+	self *config.Peer,
+	peersConfig []*config.Peer,
+	connConfig *config.Connection,
+) (*Node, error) {
 	return &Node{
-		Name:     self.Name,
-		Address:  self.Address,
-		connPool: connection.NewPool(transportScheme, self.Address, self.Name, peersConfig),
-	}
+		Name:    self.Name,
+		Address: self.Address,
+		connPool: connection.NewPool(
+			self.Address,
+			self.Name,
+			connConfig,
+			peersConfig),
+	}, nil
 }
 
 type Node struct {

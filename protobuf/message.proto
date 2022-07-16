@@ -37,7 +37,3 @@ message Response {
     ERR_ALREADY_EXISTS = 0;
   }
 }
-
-message Handshake {
-  string peer_name = 1;
-}
