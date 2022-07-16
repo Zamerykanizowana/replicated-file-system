@@ -9,43 +9,42 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
+	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
 
 func NewConnection(
-	peerName, addr string,
+	peer *config.Peer,
 	timeout time.Duration,
 	sink chan<- message,
 ) *Connection {
 	return &Connection{
-		peerName:    peerName,
-		addr:        addr,
+		peer:        peer,
 		conn:        nil,
 		status:      StatusDead,
 		mu:          new(sync.Mutex),
 		openNotify:  make(chan struct{}, 1),
 		closeNotify: make(chan struct{}, 1),
-		log: log.With().Dict("peer", zerolog.Dict().
-			Str("name", peerName).
-			Str("address", addr),
-		).Logger(),
-		timeout: timeout,
-		sink:    sink,
+		log:         log.With().Object("peer", peer).Logger(),
+		timeout:     timeout,
+		sink:        sink,
 	}
 }
 
 type (
 	Connection struct {
-		peerName   string
-		addr       string
+		peer       *config.Peer
 		conn       net.Conn
 		status     Status
 		mu         *sync.Mutex
-		openNotify chan struct{}
+		openNotify chan struct {
+		}
 		// closeNotify should only be called when we would like to reestablish the connection.
-		closeNotify chan struct{}
-		log         zerolog.Logger
-		timeout     time.Duration
-		sink        chan<- message
+		closeNotify chan struct {
+		}
+		log     zerolog.Logger
+		timeout time.Duration
+		sink    chan<- message
 	}
 	Status uint8
 )
@@ -163,6 +162,11 @@ func (c Status) String() string {
 
 func (c *Connection) handleError(err error) error {
 	cause := errors.Cause(err)
+	// Unwrap if we can, this helps reveal net.OpError from
+	// tls.permanentError (which is private for whatever reason...).
+	if unw := errors.Unwrap(cause); unw != nil {
+		cause = unw
+	}
 	var closed bool
 	switch cause {
 	case nil:
@@ -178,10 +182,9 @@ func (c *Connection) handleError(err error) error {
 		}
 	}
 	if closed {
-		log.Debug().Err(err).Msg("connection was closed")
 		c.Close()
 		c.closeNotify <- struct{}{}
-		return ErrClosed
+		return errors.Wrap(err, ErrClosed.Error())
 	}
 	return err
 }

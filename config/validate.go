@@ -47,7 +47,7 @@ func (c Connection) Validate() (err error) {
 	if c.SendRecvTimeout < 0 {
 		err = multierr.Append(err, errors.New("send and recv timeout must not be negative"))
 	}
-	if c.DialTimeout < 0 {
+	if c.HandshakeTimeout < 0 {
 		err = multierr.Append(err, errors.New("dial timeout must not be negative"))
 	}
 	if len(c.Network) == 0 {

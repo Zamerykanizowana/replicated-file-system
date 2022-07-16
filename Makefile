@@ -72,7 +72,7 @@ cert/generate-peer-key:
 cert/generate-peer-csr:
 	cd ${CERT_PATH} && \
 	openssl req -new ${CERT_AGE} \
-		-subj "/C=PL/SN=${PEER}" \
+		-subj "/C=PL/CN=${PEER}" \
 		-key peer.key \
 		-out peer.csr
 

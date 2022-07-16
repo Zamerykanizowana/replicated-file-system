@@ -12,9 +12,7 @@ import (
 )
 
 func P2P(node *p2p.Node) error {
-	if err := node.Run(); err != nil {
-		return err
-	}
+	node.Run()
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)

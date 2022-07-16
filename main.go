@@ -29,8 +29,8 @@ var (
 )
 
 func main() {
-	logging.Configure()
 	conf := mustReadConfig()
+	logging.Configure(&conf.Logging)
 
 	app := &cli.App{
 		Name:     "rfs",
@@ -100,10 +100,7 @@ func runP2P(conf *config.Config) error {
 	if selfConfig == nil {
 		return fmt.Errorf("peer with name %s was not found", peer)
 	}
-	node, err := p2p.NewNode(selfConfig, peersConfig, &conf.Connection)
-	if err != nil {
-		return err
-	}
+	node := p2p.NewNode(selfConfig, peersConfig, &conf.Connection)
 	return test.P2P(node)
 }
 
@@ -133,5 +130,6 @@ func mustReadConfig() *config.Config {
 	default:
 		conf = config.Read(flagValues.Path)
 	}
+	log.Debug().Object("config", conf).Msg("loaded config")
 	return conf
 }
