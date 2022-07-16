@@ -48,13 +48,16 @@ func (c Connection) Validate() (err error) {
 		err = multierr.Append(err, errors.New("send and recv timeout must not be negative"))
 	}
 	if c.HandshakeTimeout < 0 {
-		err = multierr.Append(err, errors.New("dial timeout must not be negative"))
+		err = multierr.Append(err, errors.New("handshake timeout must not be negative"))
 	}
 	if len(c.Network) == 0 {
 		err = multierr.Append(err, errors.New("network must not be empty"))
 	}
 	if dErr := c.DialBackoff.Validate(); dErr != nil {
 		err = multierr.Append(err, errors.Wrap(dErr, "dial_backoff config failed validation"))
+	}
+	if len(c.Compression) == 0 {
+		err = multierr.Append(err, errors.New("compression must not be empty"))
 	}
 	return nil
 }

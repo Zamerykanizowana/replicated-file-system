@@ -72,6 +72,8 @@ type (
 		HandshakeTimeout time.Duration `json:"handshake_timeout"`
 		// Network is the transport scheme string, e.g. 'tcp'.
 		Network string `json:"network"`
+		// Compression defines content compression for gzip, for more details go to protobuf/gzip.go.
+		Compression string `json:"compression"`
 	}
 
 	Backoff struct {
@@ -116,7 +118,8 @@ func (c Connection) MarshalZerologObject(e *zerolog.Event) {
 		Uint("message_buffer_size", c.MessageBufferSize).
 		Stringer("send_recv_timeout", c.SendRecvTimeout).
 		Stringer("handshake_timeout", c.HandshakeTimeout).
-		Str("network", c.Network)
+		Str("network", c.Network).
+		Str("compression", c.Compression)
 }
 
 func (b Backoff) MarshalZerologObject(e *zerolog.Event) {
