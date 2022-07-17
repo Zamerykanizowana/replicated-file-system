@@ -26,7 +26,7 @@ export PATH := $(shell go env GOPATH)/bin:$(PATH)
 all: build run
 
 run:
-	./${OUT}
+	./${OUT} -n ${PEER}
 
 # Provide the name of the Fellowship member as the target variable.
 run/docker/%:
@@ -36,11 +36,11 @@ run/docker/%:
 		-e "PEER_NAME=$(*F)" \
 		${DOCKER_IMAGE}
 
-build:
+build: cert/create
 	mkdir -p {OUT_DIR}
 	go build -ldflags "${LDFLAGS}" -o ${OUT} main.go
 
-build/full: go/format go/verify go/test cert/create build
+build/full: go/format go/verify go/test build
 
 # build/docker/%s should build a ready to run peer with a specified name through PEER env.
 build/docker: cert/create
