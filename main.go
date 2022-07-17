@@ -15,7 +15,7 @@ import (
 
 var (
 	// These are set during build through ldflags.
-	branch, commit, peer string
+	branch, commit, name string
 
 	// flagValues is a value holder for app flags.
 	flagValues = struct {
@@ -62,7 +62,7 @@ func run(conf *config.Config) error {
 	log.Info().
 		Str("commit", commit).
 		Str("branch", branch).
-		Str("peer", peer).
+		Str("peer", name).
 		Str("local_path", conf.Paths.FuseDir).
 		Msg("Initializing FS")
 

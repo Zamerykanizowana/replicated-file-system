@@ -32,20 +32,24 @@ func NewConnection(
 }
 
 type (
+	// Connection is used to encapsulate all required logic and parameters
+	// for a single net.Conn uniquely associated with a single peer.
 	Connection struct {
 		peer       *config.Peer
 		conn       net.Conn
 		status     Status
 		mu         *sync.Mutex
-		openNotify chan struct {
-		}
+		openNotify chan struct{}
 		// closeNotify should only be called when we would like to reestablish the connection.
-		closeNotify chan struct {
-		}
-		log     zerolog.Logger
-		timeout time.Duration
-		sink    chan<- message
+		// Right now there's no such case, but If it's ever the case we should make sure the
+		// goroutine responsible for dialing is shutdown too.
+		closeNotify chan struct{}
+		log         zerolog.Logger
+		timeout     time.Duration
+		sink        chan<- message
 	}
+	// Status informs about the connection state, If the net.Conn is established and running
+	// it will hold StatusAlive, otherwise StatusDead.
 	Status uint8
 )
 
@@ -60,6 +64,9 @@ var (
 	ErrTimedOut         = errors.New("operation timed out")
 )
 
+// Establish attempts to set StatusAlive for Connection and assign net.Conn to it.
+// It also releases WaitForOpen if no errors were generated.
+// If the Connection is already alive it will return an error.
 func (c *Connection) Establish(conn net.Conn) error {
 	// Fast path, no need to use mutex if we're already alive.
 	if c.status == StatusAlive {
@@ -82,6 +89,10 @@ func (c *Connection) Establish(conn net.Conn) error {
 	return nil
 }
 
+// Listen runs receiver loop, waiting for new messages.
+// If the Connection.Status is StatusDead it will block until WaitForOpen returns.
+// The received data along with any errors is wrapped by message struct and sent
+// to the sink channel.
 func (c *Connection) Listen() {
 	for {
 		if c.status == StatusDead {
@@ -110,6 +121,7 @@ func (c *Connection) Recv() (data []byte, err error) {
 	return data, c.handleError(err)
 }
 
+// Send sends data with timeout.
 func (c *Connection) Send(data []byte) (err error) {
 	if c.status == StatusDead {
 		return ErrClosed
@@ -132,16 +144,19 @@ func (c *Connection) Status() Status {
 	return c.status
 }
 
+// WaitForOpen blocks until the Connection.Status changes to StatusAlive.
 func (c *Connection) WaitForOpen() {
 	<-c.openNotify
 	return
 }
 
+// WaitForClosed blocks until the Connection.Status changes from StatusAlive to StatusDead.
 func (c *Connection) WaitForClosed() {
 	<-c.closeNotify
 	return
 }
 
+// Close closes the underlying net.Conn and sets Connection.Status to StatusDead.
 func (c *Connection) Close() {
 	c.mu.Lock()
 	closeConn(c.conn)
@@ -160,6 +175,7 @@ func (c Status) String() string {
 	}
 }
 
+// handleError discerns temporary errors from permanent and closes the Connection for the latter.
 func (c *Connection) handleError(err error) error {
 	cause := errors.Cause(err)
 	// Unwrap if we can, this helps reveal net.OpError from

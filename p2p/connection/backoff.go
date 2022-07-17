@@ -20,7 +20,7 @@ func NewBackoff(conf *config.Backoff) *Backoff {
 
 // Backoff is a time.Duration counter, starting at initial. After every call to
 // the Next method the current timing is multiplied by factor with an added jitter.
-// Backoff never exceeds max, and jitter is capped by maxJitter.
+// Backoff never exceeds max, and jitter is capped by MaxFactorJitter.
 type Backoff struct {
 	*config.Backoff
 	// attempt is stored as float64 instead of an uint to avoid type conversion for math.Pow.

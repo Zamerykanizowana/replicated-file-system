@@ -20,40 +20,40 @@ func NewPool(
 ) *Pool {
 	msgs := make(chan message, conf.MessageBufferSize)
 
-	whitelist := make(map[string]struct{}, len(pcs))
-	cs := make(map[string]*Connection, len(whitelist))
+	whitelist := make(map[peerName]struct{}, len(pcs))
+	cs := make(map[peerName]*Connection, len(whitelist))
 	for _, p := range pcs {
 		whitelist[p.Name] = struct{}{}
 		cs[p.Name] = NewConnection(p, conf.SendRecvTimeout, msgs)
 	}
 
-	pool := &Pool{
+	p := &Pool{
 		self:              self,
 		net:               conf.Network,
 		whitelist:         whitelist,
-		cs:                cs,
+		pool:              cs,
 		msgs:              msgs,
 		dialBackoffConfig: conf.DialBackoff,
 		handshakeTimeout:  conf.HandshakeTimeout,
 	}
 
 	tlsConf := tlsConfig(conf.GetTLSVersion())
-	tlsConf.VerifyConnection = pool.VerifyConnection
+	tlsConf.VerifyConnection = p.VerifyConnection
 
-	pool.dialer = &tls.Dialer{
+	p.dialer = &tls.Dialer{
 		NetDialer: &net.Dialer{},
 		Config:    tlsConf}
-	if pool.handshakeTimeout != 0 {
-		pool.dialer.NetDialer.Timeout = pool.handshakeTimeout
+	if p.handshakeTimeout != 0 {
+		p.dialer.NetDialer.Timeout = p.handshakeTimeout
 	}
 
 	var err error
-	pool.listener, err = tls.Listen(pool.net, self.Address, tlsConf)
+	p.listener, err = tls.Listen(p.net, self.Address, tlsConf)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create TLS listener")
 	}
 
-	return pool
+	return p
 }
 
 type (
@@ -61,12 +61,16 @@ type (
 	// along with TLS configuration and peer authentication.
 	Pool struct {
 		// self describes the peer this Pool was created for.
-		self              *config.Peer
-		net               string
-		whitelist         map[string]struct{}
-		dialer            *tls.Dialer
-		listener          net.Listener
-		cs                map[string]*Connection
+		self *config.Peer
+		net  string
+		// whitelist is used during VerifyConnection to check if the Subject.CommonName
+		// matches any of the peer's names.
+		whitelist map[peerName]struct{}
+		dialer    *tls.Dialer
+		listener  net.Listener
+		// pool is the map storing each Connection. The key is peer's name.
+		pool map[peerName]*Connection
+		// msgs is a buffered channel onto which each Connection.Send publishes message.
 		msgs              chan message
 		dialBackoffConfig *config.Backoff
 		handshakeTimeout  time.Duration
@@ -76,6 +80,8 @@ type (
 		data []byte
 		err  error
 	}
+	// peerName is a type alias serving solely code readability.
+	peerName = string
 )
 
 // Run has to be called once per Pool.
@@ -85,46 +91,48 @@ func (p *Pool) Run() {
 	go p.dialAll()
 }
 
+// Send sends the data to all connections by calling Connection.Send in a separate goroutine
+// and waits for all of them to finish.
 func (p *Pool) Send(data []byte) error {
 	var (
-		mErr SendMultiErr
+		mErr = &SendMultiErr{}
 		wg   sync.WaitGroup
-		mu   sync.Mutex
 	)
-	wg.Add(len(p.cs))
-	for _, c := range p.cs {
+	wg.Add(len(p.pool))
+	for _, c := range p.pool {
 		go func(conn *Connection) {
 			if err := conn.Send(data); err != nil {
-				mu.Lock()
-				if mErr == nil {
-					mErr = make(SendMultiErr)
-				}
-				mErr[conn.peer.Name] = err
-				mu.Unlock()
+				mErr.Append(conn.peer.Name, err)
 			}
 			wg.Done()
 		}(c)
 	}
 	wg.Wait()
-	if len(mErr) > 0 {
+	if !mErr.Empty() {
 		return mErr
 	}
 	return nil
 }
 
+// Recv reads one message from the messages channel, it will block until
+// a message appears on the channel.
 func (p *Pool) Recv() ([]byte, error) {
 	m := <-p.msgs
 	return m.data, m.err
 }
 
+// listen starts accepting connections and runs Connection.Listen for all the
+// connections in a separate goroutine
 func (p *Pool) listen() {
 	go p.acceptConnections()
 
-	for _, c := range p.cs {
+	for _, c := range p.pool {
 		go c.Listen()
 	}
 }
 
+// acceptConnections waits for a new connection and attempts to add it in a
+// separate goroutine.
 func (p *Pool) acceptConnections() {
 	for {
 		conn, err := p.listener.Accept()
@@ -142,7 +150,7 @@ func (p *Pool) acceptConnections() {
 
 // dialAll simply runs dial for each peer's Connection in a separate goroutine.
 func (p *Pool) dialAll() {
-	for _, conn := range p.cs {
+	for _, conn := range p.pool {
 		go p.dial(conn)
 	}
 }
@@ -150,8 +158,8 @@ func (p *Pool) dialAll() {
 // dial performs status check before attempting to dial and adds connection to the Pool.
 // This function will run forever responding to connection being closed, in this case
 // it will attempt to dial again.
-// If the dial fails for whatever reason a Backoff mechanism is applied,
-// until successful or the Connection changes state to StatusAlive.
+// If the dial fails for whatever reason a Backoff mechanism is applied
+// until successful or until the Connection changes state to StatusAlive.
 func (p *Pool) dial(c *Connection) {
 	backoff := NewBackoff(p.dialBackoffConfig)
 	for {
@@ -172,6 +180,11 @@ func (p *Pool) dial(c *Connection) {
 	}
 }
 
+// tlsRole describes a logical role the peer's connection assumes.
+// It can be either server or client depending on the method
+// the connection was established through:
+// - Dial: 		tlsClient
+// - Accept:    tlsServer
 type tlsRole uint8
 
 const (
@@ -180,7 +193,7 @@ const (
 )
 
 // add extracts peer name from x509.Certificate's Subject.CommonName.
-// It searches for the peer in cs and calls Connection.Establish.
+// It searches for the peer in the Pool and calls Connection.Establish.
 // Depending on which tlsRole is passed a handshake might be called on tls.Conn for tlsServer.
 func (p *Pool) add(netConn net.Conn, role tlsRole) error {
 	tlsConn, isTLS := netConn.(*tls.Conn)
@@ -206,7 +219,7 @@ func (p *Pool) add(netConn net.Conn, role tlsRole) error {
 	}
 
 	peerName := state.PeerCertificates[0].Subject.CommonName
-	conn := p.cs[peerName]
+	conn := p.pool[peerName]
 	if err := conn.Establish(netConn); err != nil {
 		closeConn(netConn)
 		return errors.Wrap(err, "failed to establish connection")
@@ -239,7 +252,7 @@ func (p *Pool) VerifyConnection(state tls.ConnectionState) error {
 				"SN: %s is not authorized to participate in the peer network", pn)
 		}
 	}
-	if p.cs[pn].status == StatusAlive {
+	if p.pool[pn].status == StatusAlive {
 		return errors.Errorf("connection between %s was already established", pn)
 	}
 	return nil
