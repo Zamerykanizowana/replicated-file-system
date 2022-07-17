@@ -33,7 +33,7 @@ func NewPool(
 		whitelist:         whitelist,
 		pool:              cs,
 		msgs:              msgs,
-		dialBackoffConfig: conf.DialBackoff,
+		dialBackoffConfig: &conf.DialBackoff,
 		handshakeTimeout:  conf.HandshakeTimeout,
 	}
 

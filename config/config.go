@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -41,57 +42,57 @@ func Read(path string) *Config {
 
 type (
 	Config struct {
-		Connection Connection `json:"connection"`
-		Peers      []*Peer    `json:"peers"`
-		Paths      Paths      `json:"paths"`
-		Logging    Logging    `json:"logging"`
+		Connection Connection `json:"connection" validate:"required"`
+		Peers      []*Peer    `json:"peers" validate:"required,gt=0,unique=Name"`
+		Paths      Paths      `json:"paths" validate:"required"`
+		Logging    Logging    `json:"logging" validate:"required"`
 	}
 
 	Peer struct {
 		// Name must be a unique identifier across all peers.
-		Name string `json:"name"`
+		Name string `json:"name" validate:"required"`
 		// Address should be in form of a host:port, without the network scheme.
-		Address string `json:"address"`
+		Address string `json:"address" validate:"required,url"`
 	}
 
 	Paths struct {
-		FuseDir   string `json:"fuse_dir"`
-		MirrorDir string `json:"mirror_dir"`
+		FuseDir   string `json:"fuse_dir" validate:"required"`
+		MirrorDir string `json:"mirror_dir" validate:"required"`
 	}
 
 	Connection struct {
-		DialBackoff *Backoff `json:"dial_backoff"`
+		DialBackoff Backoff `json:"dial_backoff" validate:"required"`
 		// TLSVersion describes both max and mind TLS version in the tls.Config.
-		TLSVersion string `json:"tls_version"`
+		TLSVersion string `json:"tls_version" validate:"required,oneof=1.3 1.2 1.1 1.0"`
 		// MessageBufferSize is the buffer of the global message channel onto which
 		// goroutines listening on peer Connection push received messages.
-		MessageBufferSize uint `json:"message_buffer_size"`
+		MessageBufferSize uint `json:"message_buffer_size" validate:"required,gt=0"`
 		// SendRecvTimeout sets the timeout for Recv and Send operations.
-		SendRecvTimeout time.Duration `json:"send_recv_timeout"`
+		SendRecvTimeout time.Duration `json:"send_recv_timeout" validate:"required,gt=0"`
 		// HandshakeTimeout sets the timeout for handshakes.
-		HandshakeTimeout time.Duration `json:"handshake_timeout"`
+		HandshakeTimeout time.Duration `json:"handshake_timeout" validate:"required,gt=0"`
 		// Network is the transport scheme string, e.g. 'tcp'.
-		Network string `json:"network"`
+		Network string `json:"network" validate:"required,oneof=tcp"`
 		// Compression defines content compression for gzip, for more details go to protobuf/gzip.go.
-		Compression string `json:"compression"`
+		Compression string `json:"compression" validate:"required,oneof=NoCompression BestSpeed BestCompression DefaultCompression HuffmanOnly"`
 	}
 
 	Backoff struct {
 		// Factor is the multiplying factor for each increment step.
-		Factor float64 `json:"factor"`
+		Factor float64 `json:"factor" validate:"required,gte=1"`
 		// MaxFactorJitter is the maximum factor jitter expressed in %.
 		// A value of 0.2 means we'll modify factor by 20%.
 		// Setting it to 0 will effectively turn jitter off.
-		MaxFactorJitter float64 `json:"max_factor_jitter"`
+		MaxFactorJitter float64 `json:"max_factor_jitter" validate:"required,gte=0"`
 		// Initial sets the initial value of the Backoff, which is not subject to jitter.
-		Initial time.Duration `json:"initial"`
+		Initial time.Duration `json:"initial" validate:"required,gt=0"`
 		// Max sets the maximum value after which reaching Backoff will no longer
 		// be increased.
-		Max time.Duration `json:"max"`
+		Max time.Duration `json:"max" validate:"required,gt=0,gtefield=Initial"`
 	}
 
 	Logging struct {
-		Level string `json:"level"`
+		Level string `json:"level" validate:"required,oneof=trace debug info warn error fatal panic disabled"`
 	}
 )
 
@@ -144,6 +145,8 @@ func (c Connection) GetTLSVersion() uint16 {
 	return tlsVersions[c.TLSVersion]
 }
 
+var validate = validator.New()
+
 func mustUnmarshalConfig(raw []byte) *Config {
 	var (
 		conf Config
@@ -160,7 +163,7 @@ func mustUnmarshalConfig(raw []byte) *Config {
 				Msg("failed to expand home")
 		}
 	}
-	if err = conf.Validate(); err != nil {
+	if err = validate.Struct(conf); err != nil {
 		log.Fatal().Err(err).Msg("validation failed for config")
 	}
 
