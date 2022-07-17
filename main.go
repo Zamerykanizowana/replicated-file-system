@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/pkg/errors"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
+	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 	"github.com/Zamerykanizowana/replicated-file-system/rfs"
 )
@@ -63,17 +65,42 @@ func run(conf *config.Config) error {
 		Str("commit", commit).
 		Str("branch", branch).
 		Str("peer", peer).
-		Str("local_path", conf.Paths.FuseDir).
+		Str("local_path", conf.Filesystem.FuseDir).
 		Msg("Initializing FS")
 
-	server := rfs.NewRfsFuseServer(*conf)
+	node, err := p2pNode(conf)
+	if err != nil {
+		return err
+	}
 
-	if err := server.Mount(); err != nil {
+	server := rfs.NewReplicatedFuseServer(conf, node)
+
+	if err = server.Mount(); err != nil {
 		return errors.Wrap(err, "unable to mount fuse filesystem")
 	}
 
 	server.Wait()
 	return nil
+}
+
+func p2pNode(conf *config.Config) (*p2p.Node, error) {
+	if peer == "" {
+		peer = flagValues.Name
+	}
+
+	var selfConfig *config.Peer
+	peersConfig := make([]*config.Peer, 0, len(conf.Peers)-1)
+	for _, p := range conf.Peers {
+		if p.Name == peer {
+			selfConfig = p
+			continue
+		}
+		peersConfig = append(peersConfig, p)
+	}
+	if selfConfig == nil {
+		return nil, fmt.Errorf("peer with name %s was not found", peer)
+	}
+	return p2p.NewNode(selfConfig, peersConfig, &conf.Connection), nil
 }
 
 func mustReadConfig() *config.Config {

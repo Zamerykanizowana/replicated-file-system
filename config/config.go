@@ -43,7 +43,7 @@ type (
 	Config struct {
 		Connection Connection `json:"connection"`
 		Peers      []*Peer    `json:"peers"`
-		Paths      Paths      `json:"paths"`
+		Filesystem Filesystem `json:"filesystem"`
 		Logging    Logging    `json:"logging"`
 	}
 
@@ -54,9 +54,11 @@ type (
 		Address string `json:"address"`
 	}
 
-	Paths struct {
-		FuseDir   string `json:"fuse_dir"`
-		MirrorDir string `json:"mirror_dir"`
+	Filesystem struct {
+		FuseDir      string        `json:"fuse_dir"`
+		MirrorDir    string        `json:"mirror_dir"`
+		EntryTimeout time.Duration `json:"entry_timeout"`
+		AttrTimeout  time.Duration `json:"attr_timeout"`
 	}
 
 	Connection struct {
@@ -97,14 +99,16 @@ type (
 
 func (c Config) MarshalZerologObject(e *zerolog.Event) {
 	e.Object("connection", c.Connection).
-		Object("paths", c.Paths).
+		Object("paths", c.Filesystem).
 		Interface("peers", c.Peers).
 		Object("logging", c.Logging)
 }
 
-func (p Paths) MarshalZerologObject(e *zerolog.Event) {
-	e.Str("fuse_dir", p.FuseDir).
-		Str("mirror_dir", p.MirrorDir)
+func (f Filesystem) MarshalZerologObject(e *zerolog.Event) {
+	e.Str("fuse_dir", f.FuseDir).
+		Str("mirror_dir", f.MirrorDir).
+		Stringer("attr_timeout", f.AttrTimeout).
+		Stringer("entry_timeout", f.EntryTimeout)
 }
 
 func (p Peer) MarshalZerologObject(e *zerolog.Event) {
@@ -152,7 +156,7 @@ func mustUnmarshalConfig(raw []byte) *Config {
 	if err = json.Unmarshal(raw, &conf); err != nil {
 		log.Fatal().Err(err).Msg("failed to read config.json")
 	}
-	for _, path := range []*string{&conf.Paths.FuseDir, &conf.Paths.MirrorDir} {
+	for _, path := range []*string{&conf.Filesystem.FuseDir, &conf.Filesystem.MirrorDir} {
 		*path, err = expandHome(*path)
 		if err != nil {
 			log.Fatal().Err(err).

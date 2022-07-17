@@ -17,6 +17,9 @@ func (c Config) Validate() (err error) {
 	if cErr := c.Connection.Validate(); cErr != nil {
 		err = multierr.Append(err, errors.Wrap(cErr, "connection config failed validation"))
 	}
+	if fErr := c.Filesystem.Validate(); fErr != nil {
+		err = multierr.Append(err, errors.Wrap(fErr, "filesystem config failed validation"))
+	}
 	return
 }
 
@@ -26,6 +29,22 @@ func (p Peer) Validate() (err error) {
 	}
 	if len(p.Name) == 0 {
 		err = multierr.Append(err, errors.New("name must not be empty"))
+	}
+	return
+}
+
+func (f Filesystem) Validate() (err error) {
+	if len(f.FuseDir) == 0 {
+		err = multierr.Append(err, errors.New("fuse dir most not be empty"))
+	}
+	if len(f.MirrorDir) == 0 {
+		err = multierr.Append(err, errors.New("mirror dir most not be empty"))
+	}
+	if f.AttrTimeout < 0 {
+		err = multierr.Append(err, errors.New("attr timeout must not be smaller than zero"))
+	}
+	if f.EntryTimeout < 0 {
+		err = multierr.Append(err, errors.New("entry timeout must not be smaller than zero"))
 	}
 	return
 }

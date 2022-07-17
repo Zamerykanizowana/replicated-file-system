@@ -35,9 +35,11 @@
       "name": "Gimli"
     }
   ],
-  "paths": {
+  "filesystem": {
     "fuse_dir": "~/other/rfs/virtual",
-    "mirror_dir": "~/other/rfs/contents"
+    "mirror_dir": "~/other/rfs/contents",
+    "entry_timeout": 100000000,
+    "attr_timeout": 100000000
   },
   "logging": {
     "level": "info"
