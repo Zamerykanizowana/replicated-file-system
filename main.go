@@ -28,6 +28,7 @@ var (
 func main() {
 	conf := mustReadConfig()
 	logging.Configure(&conf.Logging)
+	log.Debug().Object("config", conf).Msg("loaded config")
 	protobuf.SetCompression(conf.Connection.Compression)
 
 	app := &cli.App{
@@ -84,6 +85,5 @@ func mustReadConfig() *config.Config {
 	default:
 		conf = config.Read(flagValues.Path)
 	}
-	log.Debug().Object("config", conf).Msg("loaded config")
 	return conf
 }

@@ -48,7 +48,6 @@ build/docker: cert/create
 	docker build \
 		--file "${PWD}/Dockerfile" \
 		--tag ${DOCKER_IMAGE} \
-		--build-arg USER="${PEER}" \
 		--build-arg APP_NAME="${APP_NAME}" \
 		--build-arg LDFLAGS="${LDFLAGS} -w -s -X main.peer=${PEER}" \
 		--progress=auto \
