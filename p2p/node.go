@@ -4,6 +4,7 @@ import (
 	_ "embed"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
@@ -11,43 +12,60 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
-func NewNode(self *config.Peer, peersConfig []*config.Peer, transportScheme string) *Node {
+func NewPeer(
+	name string,
+	peersConfig []*config.Peer,
+	connConfig *config.Connection,
+) *Peer {
+	var self config.Peer
+	peers := make([]*config.Peer, 0, len(peersConfig)-1)
 	for _, p := range peersConfig {
-		connection.Whitelist(p.Name)
+		if name == p.Name {
+			self = *p
+			continue
+		}
+		peers = append(peers, p)
 	}
-	return &Node{
-		Name:     self.Name,
-		Address:  self.Address,
-		connPool: connection.NewPool(transportScheme, self.Address, self.Name, peersConfig),
+	if len(self.Name) == 0 {
+		log.Fatal().
+			Str("name", name).
+			Interface("peers_config", peersConfig).
+			Msg("invalid peer name provided, peer must be listed in the peers config")
+	}
+	return &Peer{
+		Peer:     self,
+		connPool: connection.NewPool(&self, connConfig, peersConfig),
 	}
 }
 
-type Node struct {
-	Name     string
-	Address  string
+// Peer represents a single peer we're running in the p2p network.
+type Peer struct {
+	config.Peer
 	connPool *connection.Pool
 }
 
-func (n *Node) Run() error {
-	if err := n.connPool.Run(); err != nil {
-		return errors.Wrap(err, "failed to run connections pool")
-	}
-	return nil
+// Run kicks of connection processes for the Peer.
+func (p *Peer) Run() {
+	log.Info().Object("peer", p).Msg("initializing p2p network connection")
+	p.connPool.Run()
 }
 
-func (n *Node) Send(msg *protobuf.Message) error {
+// Send sends the protobuf.Message to all the other peers in the network.
+func (p *Peer) Send(msg *protobuf.Message) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal protobuf message")
 	}
-	if err = n.connPool.Send(data); err != nil {
+	if err = p.connPool.Send(data); err != nil {
 		return errors.Wrap(err, "failed to send the message to some of the peers")
 	}
 	return nil
 }
 
-func (n *Node) Receive() (*protobuf.Message, error) {
-	data, err := n.connPool.Recv()
+// Receive receives a single protobuf.Message from the network.
+// It blocks until the message is received.
+func (p *Peer) Receive() (*protobuf.Message, error) {
+	data, err := p.connPool.Recv()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to receive message from peer")
 	}
