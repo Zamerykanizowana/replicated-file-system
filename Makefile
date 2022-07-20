@@ -4,7 +4,7 @@ PEER ?= Aragorn
 
 APP_NAME = rfs
 OUT_DIR = bin
-OUT = ./{OUT_DIR}/${APP_NAME}
+OUT = ./${OUT_DIR}/${APP_NAME}
 
 GIT_COMMIT = $(shell git rev-parse --short=8 HEAD)
 GIT_BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
@@ -37,7 +37,7 @@ run/docker/%:
 		${DOCKER_IMAGE}
 
 build: cert/create
-	mkdir -p {OUT_DIR}
+	mkdir -p ${OUT_DIR}
 	go build -ldflags "${LDFLAGS}" -o ${OUT} main.go
 
 build/full: go/format go/verify go/test build
