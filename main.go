@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"os"
 
 	"github.com/pkg/errors"
@@ -72,6 +73,9 @@ func run(conf *config.Config) error {
 	if err := server.Mount(); err != nil {
 		return errors.Wrap(err, "unable to mount fuse filesystem")
 	}
+
+	peer := p2p.NewPeer(name, conf.Peers, &conf.Connection)
+	peer.Run()
 
 	server.Wait()
 	return nil
