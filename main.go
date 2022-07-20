@@ -47,7 +47,7 @@ func main() {
 			&cli.StringFlag{
 				Name:        "name",
 				Usage:       "Provide peer name, It must be also present in the config, linked to an address",
-				Required:    true,
+				Value:       name,
 				Destination: &flagValues.Name,
 				Aliases:     []string{"n"},
 			},
@@ -64,7 +64,7 @@ func run(conf *config.Config) error {
 	log.Info().
 		Str("commit", commit).
 		Str("branch", branch).
-		Str("peer", name).
+		Str("peer", flagValues.Name).
 		Str("local_path", conf.Paths.FuseDir).
 		Msg("Initializing FS")
 
@@ -74,7 +74,7 @@ func run(conf *config.Config) error {
 		return errors.Wrap(err, "unable to mount fuse filesystem")
 	}
 
-	peer := p2p.NewPeer(name, conf.Peers, &conf.Connection)
+	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection)
 	peer.Run()
 
 	server.Wait()
