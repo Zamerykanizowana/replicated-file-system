@@ -18,15 +18,14 @@ func NewPeer(
 	connConfig *config.Connection,
 ) *Peer {
 	var self config.Peer
-
-	// Attempt to find the peer config associated with the current peer
+	peers := make([]*config.Peer, 0, len(peersConfig)-1)
 	for _, p := range peersConfig {
 		if name == p.Name {
 			self = *p
 			continue
 		}
+		peers = append(peers, p)
 	}
-
 	if len(self.Name) == 0 {
 		log.Fatal().
 			Str("name", name).
