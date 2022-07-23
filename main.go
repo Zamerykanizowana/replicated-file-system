@@ -1,8 +1,10 @@
 package main
 
 import (
-	"github.com/Zamerykanizowana/replicated-file-system/p2p"
+	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
+	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 	"github.com/Zamerykanizowana/replicated-file-system/rfs"
 )
@@ -61,6 +64,9 @@ func main() {
 }
 
 func run(conf *config.Config) error {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
 	log.Info().
 		Str("commit", commit).
 		Str("branch", branch).
@@ -76,6 +82,13 @@ func run(conf *config.Config) error {
 
 	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection)
 	peer.Run()
+
+	// Unmount filesystem upon receiving signal.
+	go func() {
+		sig := <-sigs
+		log.Info().Str("signal", fmt.Sprint(sig)).Msg("Signal received!")
+		server.Server.Unmount()
+	}()
 
 	server.Wait()
 	return nil
