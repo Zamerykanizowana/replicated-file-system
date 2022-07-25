@@ -72,6 +72,14 @@ func (n *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAtt
 	return fakeError
 }
 
+func (n *rfsRoot) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	inode, _ := n.LoopbackNode.Symlink(ctx, target, name, out)
+
+	fakeError := syscall.ENFILE
+
+	return inode, fakeError
+}
+
 func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	fh, flags, _ := n.LoopbackNode.Open(ctx, flags)
 
