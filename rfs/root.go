@@ -88,6 +88,16 @@ func (n *rfsRoot) Unlink(ctx context.Context, name string) syscall.Errno {
 	return fakeError
 }
 
+func (n *rfsRoot) CopyFileRange(ctx context.Context, fhIn fs.FileHandle,
+	offIn uint64, out *fs.Inode, fhOut fs.FileHandle, offOut uint64,
+	len uint64, flags uint64) (uint32, syscall.Errno) {
+	fflags, _ := n.LoopbackNode.CopyFileRange(ctx, fhIn, offIn, out, fhOut, offOut, len, flags)
+
+	fakeError := syscall.ETXTBSY
+
+	return fflags, fakeError
+}
+
 func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	fh, flags, _ := n.LoopbackNode.Open(ctx, flags)
 
