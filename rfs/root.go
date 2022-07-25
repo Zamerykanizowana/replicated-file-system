@@ -64,6 +64,14 @@ func (n *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
 	return fakeError
 }
 
+func (n *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+	_ = n.LoopbackNode.Setattr(ctx, fh, in, out)
+
+	fakeError := syscall.ENOSYS
+
+	return fakeError
+}
+
 func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	fh, flags, _ := n.LoopbackNode.Open(ctx, flags)
 
