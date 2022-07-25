@@ -56,6 +56,14 @@ func (n *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmb
 	return fakeError
 }
 
+func (n *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
+	_ = n.LoopbackNode.Rmdir(ctx, name)
+
+	fakeError := syscall.EISDIR
+
+	return fakeError
+}
+
 func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	fh, flags, _ := n.LoopbackNode.Open(ctx, flags)
 
