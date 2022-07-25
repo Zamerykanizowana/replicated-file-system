@@ -30,6 +30,14 @@ func (n *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 	return inode, fh, fflags, fakeError
 }
 
+func (n *rfsRoot) Link(ctx context.Context, target fs.InodeEmbedder, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	inode, _ := n.LoopbackNode.Link(ctx, target, name, out)
+
+	fakeError := syscall.EXDEV
+
+	return inode, fakeError
+}
+
 func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	fh, flags, _ := n.LoopbackNode.Open(ctx, flags)
 
