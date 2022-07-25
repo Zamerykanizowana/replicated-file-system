@@ -38,6 +38,15 @@ func (n *rfsRoot) Link(ctx context.Context, target fs.InodeEmbedder, name string
 	return inode, fakeError
 }
 
+func (n *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode,
+	syscall.Errno) {
+	inode, _ := n.LoopbackNode.Mkdir(ctx, name, mode, out)
+
+	fakeError := syscall.EAGAIN
+
+	return inode, fakeError
+}
+
 func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	fh, flags, _ := n.LoopbackNode.Open(ctx, flags)
 
