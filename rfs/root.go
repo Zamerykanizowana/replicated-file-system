@@ -6,6 +6,7 @@ import (
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"github.com/rs/zerolog/log"
 )
 
 type rfsRoot struct {
@@ -27,6 +28,8 @@ func (n *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 
 	fakeError := syscall.EEXIST
 
+	log.Info().Msg("error for create: EEXIST: File exists")
+
 	return inode, fh, fflags, fakeError
 }
 
@@ -34,6 +37,11 @@ func (n *rfsRoot) Link(ctx context.Context, target fs.InodeEmbedder, name string
 	inode, _ := n.LoopbackNode.Link(ctx, target, name, out)
 
 	fakeError := syscall.EXDEV
+
+	// TODO: something is wrong with this func
+	// When try to ln -s then error is: EMFILE Too many open files in system
+	// When try to ln then error is: Invalid cross-device link
+	log.Info().Msg("error for link: EXDEV: ")
 
 	return inode, fakeError
 }
@@ -43,6 +51,8 @@ func (n *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse
 	inode, _ := n.LoopbackNode.Mkdir(ctx, name, mode, out)
 
 	fakeError := syscall.EAGAIN
+
+	log.Info().Msg("error for mkdir: EAGAIN: Resource temporarily unavailable")
 
 	return inode, fakeError
 }
