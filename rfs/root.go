@@ -80,6 +80,14 @@ func (n *rfsRoot) Symlink(ctx context.Context, target, name string, out *fuse.En
 	return inode, fakeError
 }
 
+func (n *rfsRoot) Unlink(ctx context.Context, name string) syscall.Errno {
+	_ = n.LoopbackNode.Unlink(ctx, name)
+
+	fakeError := syscall.ENOSPC
+
+	return fakeError
+}
+
 func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	fh, flags, _ := n.LoopbackNode.Open(ctx, flags)
 
