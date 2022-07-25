@@ -22,7 +22,7 @@ type RfsFuseServer struct {
 func (r *RfsFuseServer) Mount() error {
 	sec := time.Second
 
-	s, err := fs.Mount(r.Config.Paths.FuseDir, newRfsRoot(r.LoopbackRoot, nil, "", nil), &fs.Options{
+	s, err := fs.Mount(r.Config.Paths.FuseDir, r.RfsRoot, &fs.Options{
 		AttrTimeout:  &sec,
 		EntryTimeout: &sec,
 	})

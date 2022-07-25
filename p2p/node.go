@@ -34,7 +34,7 @@ func NewPeer(
 	}
 	return &Peer{
 		Peer:     self,
-		connPool: connection.NewPool(&self, connConfig, peersConfig),
+		connPool: connection.NewPool(&self, connConfig, peers),
 	}
 }
 

@@ -19,8 +19,14 @@ message Request {
 
   enum Type {
     CREATE = 0;
-    MODIFY = 1;
-    DELETE = 2;
+    LINK = 1;
+    MKDIR = 2;
+    RENAME = 3;
+    RMDIR = 4;
+    SETATTR = 5;
+    SYMLINK = 6;
+    UNLINK = 7;
+    WRITE = 8;
   }
 }
 
