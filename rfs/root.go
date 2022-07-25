@@ -47,6 +47,15 @@ func (n *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse
 	return inode, fakeError
 }
 
+func (n *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string,
+	flags uint32) syscall.Errno {
+	_ = n.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
+
+	fakeError := syscall.EBADF
+	
+	return fakeError
+}
+
 func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	fh, flags, _ := n.LoopbackNode.Open(ctx, flags)
 
