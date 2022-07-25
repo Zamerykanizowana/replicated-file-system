@@ -52,7 +52,7 @@ func (n *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmb
 	_ = n.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
 
 	fakeError := syscall.EBADF
-	
+
 	return fakeError
 }
 
