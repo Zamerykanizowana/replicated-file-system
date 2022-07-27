@@ -55,6 +55,16 @@ func (n *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse
 	return inode, fakeError
 }
 
+func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
+	fh, fflags, _ := n.LoopbackNode.Open(ctx, flags)
+
+	fakeError := syscall.ENOTTY
+
+	log.Info().Msg("error message for open: ENOTTY: Not a typewriter")
+
+	return fh, fflags, fakeError
+}
+
 func (n *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string,
 	flags uint32) syscall.Errno {
 	_ = n.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
