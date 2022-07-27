@@ -50,8 +50,8 @@ func (p *Peer) Run() {
 	p.connPool.Run()
 }
 
-// Send sends the protobuf.Message to all the other peers in the network.
-func (p *Peer) Send(msg *protobuf.Message) error {
+// Broadcast sends the protobuf.Message to all the other peers in the network.
+func (p *Peer) Broadcast(msg *protobuf.Message) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal protobuf message")
