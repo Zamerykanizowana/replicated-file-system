@@ -2,6 +2,8 @@ package p2p
 
 import (
 	_ "embed"
+	"github.com/google/uuid"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -35,19 +37,78 @@ func NewPeer(
 	return &Peer{
 		Peer:     self,
 		connPool: connection.NewPool(&self, connConfig, peers),
+		transactions: Transactions{
+			ts: make(map[TransactionId]*Transaction, len(peersConfig)),
+			mu: new(sync.Mutex),
+		},
 	}
 }
 
 // Peer represents a single peer we're running in the p2p network.
-type Peer struct {
-	config.Peer
-	connPool *connection.Pool
+type (
+	Peer struct {
+		config.Peer
+		connPool     *connection.Pool
+		transactions Transactions
+	}
+	Transactions struct {
+		ts map[TransactionId]*Transaction
+		mu *sync.Mutex
+	}
+	TransactionId = string
+	Transaction   struct {
+		Request    *protobuf.Request
+		Responses  []*protobuf.Response
+		NotifyChan chan *protobuf.Response
+	}
+)
+
+func (t *Transactions) Put(message *protobuf.Message) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if _, ok := t.ts[message.Tid]; !ok {
+		t.ts[message.Tid] = &Transaction{}
+	}
+
+	transaction := t.ts[message.Tid]
+
+	switch v := message.Type.(type) {
+	case *protobuf.Message_Request:
+		transaction.Request = v.Request
+	case *protobuf.Message_Response:
+		transaction.Responses = append(transaction.Responses, v.Response)
+	}
+}
+
+func (t *Transactions) Delete(tid TransactionId) {
+	t.mu.Lock()
+	delete(t.ts, tid)
+	t.mu.Unlock()
 }
 
 // Run kicks of connection processes for the Peer.
 func (p *Peer) Run() {
 	log.Info().Object("peer", p).Msg("initializing p2p network connection")
 	p.connPool.Run()
+	// TODO: kick off go routine for collecting messages
+}
+
+func (p *Peer) Replicate(requestType protobuf.Request_Type, content []byte) error {
+	transactionId := uuid.New().String()
+	request, err := protobuf.NewRequestMessage(transactionId, p.Name, requestType, content)
+	if err != nil {
+		return err
+	}
+
+	p.transactions.Put(request)
+
+	if err = p.Broadcast(request); err != nil {
+		p.transactions.Delete(request.Tid)
+		return err
+	}
+
+	// TODO: wait for the notification from the channel that a message for the given TID has arrived.
 }
 
 // Broadcast sends the protobuf.Message to all the other peers in the network.
