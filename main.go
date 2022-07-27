@@ -87,7 +87,10 @@ func run(conf *config.Config) error {
 	go func() {
 		sig := <-sigs
 		log.Info().Str("signal", fmt.Sprint(sig)).Msg("Signal received!")
-		server.Server.Unmount()
+		err := server.Server.Unmount()
+		if err != nil {
+			log.Err(err).Msg("unsuccessful unmount")
+		}
 	}()
 
 	server.Wait()
