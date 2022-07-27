@@ -2,6 +2,7 @@ package rfs
 
 import (
 	"context"
+	"path/filepath"
 	"syscall"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -56,13 +57,17 @@ func (n *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse
 }
 
 func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
-	fh, fflags, _ := n.LoopbackNode.Open(ctx, flags)
+	flags = flags &^ syscall.O_APPEND
+	p := filepath.Join(n.RootData.Path, n.Path(n.Root()))
+	f, err := syscall.Open(p, int(flags), 0)
+	if err != nil {
+		return nil, 0, fs.ToErrno(err)
+	}
+	lf := NewRfsFile(f)
 
-	fakeError := syscall.ENOTTY
+	log.Info().Msg("Hello from custom Open func")
 
-	log.Info().Msg("error message for open: ENOTTY: Not a typewriter")
-
-	return fh, fflags, fakeError
+	return lf, 0, 0
 }
 
 func (n *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string,
