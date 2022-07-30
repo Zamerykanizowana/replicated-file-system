@@ -72,7 +72,7 @@ type (
 		// HandshakeTimeout sets the timeout for handshakes.
 		HandshakeTimeout time.Duration `json:"handshake_timeout" validate:"required,gt=0"`
 		// Network is the transport scheme string, e.g. 'tcp'.
-		Network string `json:"network" validate:"required,oneof=tcp"`
+		Network string `json:"network" validate:"required,oneof=tcp quic"`
 		// Compression defines content compression for gzip, for more details go to protobuf/gzip.go.
 		Compression string `json:"compression" validate:"required,oneof=NoCompression BestSpeed BestCompression DefaultCompression HuffmanOnly"`
 	}

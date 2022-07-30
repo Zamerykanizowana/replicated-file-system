@@ -3,10 +3,10 @@ package connection
 import (
 	"context"
 	"crypto/tls"
-	"net"
 	"sync"
 	"time"
 
+	"github.com/lucas-clemente/quic-go"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
@@ -39,16 +39,13 @@ func NewPool(
 
 	tlsConf := tlsConfig(conf.GetTLSVersion())
 	tlsConf.VerifyConnection = p.VerifyConnection
+	p.tlsConfig = tlsConf
 
-	p.dialer = &tls.Dialer{
-		NetDialer: &net.Dialer{},
-		Config:    tlsConf}
-	if p.handshakeTimeout != 0 {
-		p.dialer.NetDialer.Timeout = p.handshakeTimeout
-	}
+	quicConf := quicConfig(p.handshakeTimeout)
+	p.quicConf = quicConf
 
 	var err error
-	p.listener, err = tls.Listen(p.net, self.Address, tlsConf)
+	p.listener, err = quic.ListenAddr(self.Address, tlsConf, quicConf)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create TLS listener")
 	}
@@ -66,8 +63,9 @@ type (
 		// whitelist is used during VerifyConnection to check if the Subject.CommonName
 		// matches any of the peer's names.
 		whitelist map[peerName]struct{}
-		dialer    *tls.Dialer
-		listener  net.Listener
+		tlsConfig *tls.Config
+		listener  quic.Listener
+		quicConf  *quic.Config
 		// pool is the map storing each Connection. The key is peer's name.
 		pool map[peerName]*Connection
 		// msgs is a buffered channel onto which each Connection.Send publishes message.
@@ -98,10 +96,12 @@ func (p *Pool) Send(data []byte) error {
 		mErr = &SendMultiErr{}
 		wg   sync.WaitGroup
 	)
+	// TODO add context to the Send parameters.
+	ctx := context.Background()
 	wg.Add(len(p.pool))
 	for _, c := range p.pool {
 		go func(conn *Connection) {
-			if err := conn.Send(data); err != nil {
+			if err := conn.Send(ctx, data); err != nil {
 				mErr.Append(conn.peer.Name, err)
 			}
 			wg.Done()
@@ -134,14 +134,15 @@ func (p *Pool) listen() {
 // acceptConnections waits for a new connection and attempts to add it in a
 // separate goroutine.
 func (p *Pool) acceptConnections() {
+	noopCtx := context.Background()
 	for {
-		conn, err := p.listener.Accept()
+		conn, err := p.listener.Accept(noopCtx)
 		if err != nil {
 			log.Err(err).Msg("failed to accept incoming connection")
 			continue
 		}
 		go func() {
-			if err = p.add(conn, tlsServer); err != nil {
+			if err = p.add(conn); err != nil {
 				log.Debug().Err(err).Send()
 			}
 		}()
@@ -162,66 +163,45 @@ func (p *Pool) dialAll() {
 // until successful or until the Connection changes state to StatusAlive.
 func (p *Pool) dial(c *Connection) {
 	backoff := NewBackoff(p.dialBackoffConfig)
+	var err error
 	for {
-		if c.status == StatusAlive {
-			backoff.Reset()
-			c.WaitForClosed()
-		}
-		netConn, err := p.dialer.Dial(p.net, c.peer.Address)
-		if err != nil {
+		if err = p.dialOnce(c); err != nil {
 			backoff.Next()
 			c.log.Debug().EmbedObject(backoff).Err(err).Msg("failed to dial connection")
 			continue
 		}
-		if err = p.add(netConn, tlsClient); err != nil {
-			backoff.Next()
-			c.log.Debug().EmbedObject(backoff).Err(err).Msg("failed to add connection")
-		}
+		backoff.Reset()
 	}
 }
 
-// tlsRole describes a logical role the peer's connection assumes.
-// It can be either server or client depending on the method
-// the connection was established through:
-// - Dial: 		tlsClient
-// - Accept:    tlsServer
-type tlsRole uint8
-
-const (
-	tlsServer tlsRole = iota
-	tlsClient
-)
+func (p *Pool) dialOnce(c *Connection) error {
+	if c.status == StatusAlive {
+		c.WaitForClosed()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), p.handshakeTimeout)
+	defer cancel()
+	conn, err := quic.DialAddrContext(ctx, c.peer.Address, p.tlsConfig, p.quicConf)
+	if err != nil {
+		return err
+	}
+	return p.add(conn)
+}
 
 // add extracts peer name from x509.Certificate's Subject.CommonName.
 // It searches for the peer in the Pool and calls Connection.Establish.
-// Depending on which tlsRole is passed a handshake might be called on tls.Conn for tlsServer.
-func (p *Pool) add(netConn net.Conn, role tlsRole) error {
-	tlsConn, isTLS := netConn.(*tls.Conn)
-	if !isTLS {
-		closeConn(netConn)
-		return errors.New("non TLS connection")
-	}
-
-	// tls client is initiating handshake during dial, we have to do it
-	// manually here as a server.
-	if role == tlsServer {
-		if err := p.handshake(tlsConn); err != nil {
-			return errors.Wrap(err, "tls handshake failed")
-		}
-	}
-
-	state := tlsConn.ConnectionState()
+func (p *Pool) add(quicConn quic.Connection) error {
+	tlsState := quicConn.ConnectionState().TLS
 	// At this point if this cert does not exist,
 	// we have done something very wrong code wise.
-	if len(state.PeerCertificates) != 1 {
+	if len(tlsState.PeerCertificates) != 1 {
 		return errors.Errorf("expected excatly one peer certificate, got: %d",
-			len(state.PeerCertificates))
+			len(tlsState.PeerCertificates))
 	}
 
-	peerName := state.PeerCertificates[0].Subject.CommonName
-	conn := p.pool[peerName]
-	if err := conn.Establish(netConn); err != nil {
-		closeConn(netConn)
+	pn := tlsState.PeerCertificates[0].Subject.CommonName
+	conn := p.pool[pn]
+	if err := conn.Establish(quicConn); err != nil {
+		closeConn(quicConn, err)
 		return errors.Wrap(err, "failed to establish connection")
 	}
 	return nil
