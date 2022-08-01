@@ -41,6 +41,7 @@ func NewPeer(
 			ts: make(map[TransactionId]*Transaction, len(peersConfig)),
 			mu: new(sync.Mutex),
 		},
+		peers: peers,
 	}
 }
 
@@ -50,6 +51,7 @@ type (
 		config.Peer
 		connPool     *connection.Pool
 		transactions Transactions
+		peers        []*config.Peer
 	}
 	Transactions struct {
 		ts map[TransactionId]*Transaction
@@ -59,26 +61,32 @@ type (
 	Transaction   struct {
 		Request    *protobuf.Request
 		Responses  []*protobuf.Response
-		NotifyChan chan *protobuf.Response
+		NotifyChan chan *protobuf.Message
 	}
 )
 
-func (t *Transactions) Put(message *protobuf.Message) {
+func (t *Transactions) Put(message *protobuf.Message) (transaction *Transaction, created bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if _, ok := t.ts[message.Tid]; !ok {
+	if _, created = t.ts[message.Tid]; !created {
 		t.ts[message.Tid] = &Transaction{}
+		t.ts[message.Tid].NotifyChan = make(chan *protobuf.Message)
 	}
 
-	transaction := t.ts[message.Tid]
+	transaction = t.ts[message.Tid]
 
 	switch v := message.Type.(type) {
 	case *protobuf.Message_Request:
+		if v.Request != nil {
+			log.Error().Interface("msg", message).Msg("Request has already been set in transaction")
+		}
 		transaction.Request = v.Request
 	case *protobuf.Message_Response:
 		transaction.Responses = append(transaction.Responses, v.Response)
 	}
+
+	return
 }
 
 func (t *Transactions) Delete(tid TransactionId) {
@@ -91,7 +99,7 @@ func (t *Transactions) Delete(tid TransactionId) {
 func (p *Peer) Run() {
 	log.Info().Object("peer", p).Msg("initializing p2p network connection")
 	p.connPool.Run()
-	// TODO: kick off go routine for collecting messages
+	go p.Listen()
 }
 
 func (p *Peer) Replicate(requestType protobuf.Request_Type, content []byte) error {
@@ -101,14 +109,20 @@ func (p *Peer) Replicate(requestType protobuf.Request_Type, content []byte) erro
 		return err
 	}
 
-	p.transactions.Put(request)
+	transaction, _ := p.transactions.Put(request)
 
 	if err = p.Broadcast(request); err != nil {
 		p.transactions.Delete(request.Tid)
 		return err
 	}
 
-	// TODO: wait for the notification from the channel that a message for the given TID has arrived.
+	for range p.peers {
+		msg := <-transaction.NotifyChan
+		response := msg.GetResponse()
+		log.Debug().Interface("response", response).Send()
+	}
+
+	return nil
 }
 
 // Broadcast sends the protobuf.Message to all the other peers in the network.
@@ -123,12 +137,28 @@ func (p *Peer) Broadcast(msg *protobuf.Message) error {
 	return nil
 }
 
-// Receive receives a single protobuf.Message from the network.
+// receive a single protobuf.Message from the network.
 // It blocks until the message is received.
-func (p *Peer) Receive() (*protobuf.Message, error) {
+func (p *Peer) receive() (*protobuf.Message, error) {
 	data, err := p.connPool.Recv()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to receive message from peer")
 	}
 	return protobuf.ReadMessage(data)
+}
+
+func (p *Peer) Listen() {
+	for {
+		msg, err := p.receive()
+		if err != nil {
+			log.Err(err).Msg("Error while collecting a message")
+			continue
+		}
+		transaction, created := p.transactions.Put(msg)
+		if created {
+			// TODO
+			continue
+		}
+		transaction.NotifyChan <- msg
+	}
 }
