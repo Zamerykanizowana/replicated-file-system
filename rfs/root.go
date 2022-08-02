@@ -29,7 +29,8 @@ func (n *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 
 	fakeError := syscall.EEXIST
 
-	log.Info().Msg("error for create: EEXIST: File exists")
+	n.peer.
+		log.Info().Msg("error for create: EEXIST: File exists")
 
 	return inode, fh, fflags, fakeError
 }

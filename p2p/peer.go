@@ -99,7 +99,7 @@ func (t *Transactions) Delete(tid TransactionId) {
 func (p *Peer) Run() {
 	log.Info().Object("peer", p).Msg("initializing p2p network connection")
 	p.connPool.Run()
-	go p.Listen()
+	go p.listen()
 }
 
 func (p *Peer) Replicate(requestType protobuf.Request_Type, content []byte) error {
@@ -111,7 +111,7 @@ func (p *Peer) Replicate(requestType protobuf.Request_Type, content []byte) erro
 
 	transaction, _ := p.transactions.Put(request)
 
-	if err = p.Broadcast(request); err != nil {
+	if err = p.broadcast(request); err != nil {
 		p.transactions.Delete(request.Tid)
 		return err
 	}
@@ -125,8 +125,8 @@ func (p *Peer) Replicate(requestType protobuf.Request_Type, content []byte) erro
 	return nil
 }
 
-// Broadcast sends the protobuf.Message to all the other peers in the network.
-func (p *Peer) Broadcast(msg *protobuf.Message) error {
+// broadcast sends the protobuf.Message to all the other peers in the network.
+func (p *Peer) broadcast(msg *protobuf.Message) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal protobuf message")
@@ -155,14 +155,14 @@ func (p *Peer) handleTransaction(ch <-chan *protobuf.Message) {
 
 		if request := msg.GetRequest(); request != nil {
 			response := protobuf.NewResponseMessage(msg.Tid, p.Name, protobuf.Response_ACK, nil)
-			if err := p.Broadcast(response); err != nil {
+			if err := p.broadcast(response); err != nil {
 				log.Err(err).Interface("response", response).Msg("error occurred while broadcasting a response")
 			}
 		}
 	}
 }
 
-func (p *Peer) Listen() {
+func (p *Peer) listen() {
 	for {
 		msg, err := p.receive()
 		if err != nil {
