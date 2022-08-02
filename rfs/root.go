@@ -3,6 +3,7 @@ package rfs
 import (
 	"context"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p"
+	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 	"path/filepath"
 	"syscall"
 
@@ -27,12 +28,14 @@ func (n *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 	out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
 	inode, fh, fflags, _ := n.LoopbackNode.Create(ctx, name, flags, mode, out)
 
-	fakeError := syscall.EEXIST
+	var transactionError syscall.Errno
 
-	n.peer.
+	if err := n.peer.Replicate(protobuf.Request_CREATE, nil); err != nil {
+		transactionError = syscall.EEXIST
 		log.Info().Msg("error for create: EEXIST: File exists")
+	}
 
-	return inode, fh, fflags, fakeError
+	return inode, fh, fflags, transactionError
 }
 
 // Link is for hard link, not for symlink
