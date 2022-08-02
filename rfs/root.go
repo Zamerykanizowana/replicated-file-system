@@ -2,6 +2,7 @@ package rfs
 
 import (
 	"context"
+	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"path/filepath"
 	"syscall"
 
@@ -12,15 +13,14 @@ import (
 
 type rfsRoot struct {
 	fs.LoopbackNode
+	peer *p2p.Peer
 }
 
-func newRfsRoot(r *fs.LoopbackRoot, p *fs.Inode, n string, st *syscall.Stat_t) fs.InodeEmbedder {
-	node := &rfsRoot{
-		LoopbackNode: fs.LoopbackNode{
-			RootData: r,
-		},
+func (r *rfsRoot) newRfsRoot(lr *fs.LoopbackRoot, p *fs.Inode, n string, st *syscall.Stat_t) fs.InodeEmbedder {
+	r.LoopbackNode = fs.LoopbackNode{
+		RootData: lr,
 	}
-	return node
+	return r
 }
 
 func (n *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode uint32,

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
-	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 	"github.com/Zamerykanizowana/replicated-file-system/rfs"
 )
@@ -74,14 +74,14 @@ func run(conf *config.Config) error {
 		Str("local_path", conf.Paths.FuseDir).
 		Msg("Initializing FS")
 
-	server := rfs.NewRfsFuseServer(*conf)
+	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection)
+	peer.Run()
+
+	server := rfs.NewRfsFuseServer(*conf, peer)
 
 	if err := server.Mount(); err != nil {
 		return errors.Wrap(err, "unable to mount fuse filesystem")
 	}
-
-	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection)
-	peer.Run()
 
 	// Unmount filesystem upon receiving signal.
 	go func() {
