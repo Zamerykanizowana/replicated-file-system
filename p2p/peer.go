@@ -147,6 +147,21 @@ func (p *Peer) receive() (*protobuf.Message, error) {
 	return protobuf.ReadMessage(data)
 }
 
+func (p *Peer) handleTransaction(ch <-chan *protobuf.Message) {
+	for range p.peers {
+		msg := <-ch
+
+		log.Info().Interface("msg", msg).Msg("message received")
+
+		if request := msg.GetRequest(); request != nil {
+			response := protobuf.NewResponseMessage(msg.Tid, p.Name, protobuf.Response_ACK, nil)
+			if err := p.Broadcast(response); err != nil {
+				log.Err(err).Interface("response", response).Msg("error occurred while broadcasting a response")
+			}
+		}
+	}
+}
+
 func (p *Peer) Listen() {
 	for {
 		msg, err := p.receive()
@@ -156,8 +171,7 @@ func (p *Peer) Listen() {
 		}
 		transaction, created := p.transactions.Put(msg)
 		if created {
-			// TODO
-			continue
+			go p.handleTransaction(transaction.NotifyChan)
 		}
 		transaction.NotifyChan <- msg
 	}
