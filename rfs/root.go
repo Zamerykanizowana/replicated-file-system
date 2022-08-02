@@ -2,10 +2,11 @@ package rfs
 
 import (
 	"context"
-	"github.com/Zamerykanizowana/replicated-file-system/p2p"
-	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 	"path/filepath"
 	"syscall"
+
+	"github.com/Zamerykanizowana/replicated-file-system/p2p"
+	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -18,10 +19,9 @@ type rfsRoot struct {
 }
 
 func (r *rfsRoot) newRfsRoot(lr *fs.LoopbackRoot, p *fs.Inode, n string, st *syscall.Stat_t) fs.InodeEmbedder {
-	r.LoopbackNode = fs.LoopbackNode{
-		RootData: lr,
-	}
-	return r
+	return &rfsRoot{
+		peer:         r.peer,
+		LoopbackNode: fs.LoopbackNode{RootData: lr}}
 }
 
 func (n *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode uint32,
