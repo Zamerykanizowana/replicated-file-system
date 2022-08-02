@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -30,11 +31,6 @@ var (
 )
 
 func main() {
-	conf := mustReadConfig()
-	logging.Configure(&conf.Logging)
-	log.Debug().Object("config", conf).Msg("loaded config")
-	protobuf.SetCompression(conf.Connection.Compression)
-
 	app := &cli.App{
 		Name:     "rfs",
 		HelpName: "Replicated file system using FUSE bindings and peer-2-peer architecture",
@@ -55,7 +51,14 @@ func main() {
 				Aliases:     []string{"n"},
 			},
 		},
-		Action: func(context *cli.Context) error { return run(conf) },
+		Action: func(context *cli.Context) error {
+			conf := mustReadConfig()
+			logging.Configure(&conf.Logging)
+			log.Debug().Object("config", conf).Msg("loaded config")
+			protobuf.SetCompression(conf.Connection.Compression)
+
+			return run(conf)
+		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
