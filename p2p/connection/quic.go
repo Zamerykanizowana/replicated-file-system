@@ -18,11 +18,12 @@ func quicConfig(handshakeTimeout time.Duration) *quic.Config {
 		InitialConnectionReceiveWindow: 0,
 		MaxConnectionReceiveWindow:     0,
 		AllowConnectionWindowIncrease:  nil,
-		MaxIncomingStreams:             1,
-		MaxIncomingUniStreams:          2,
-		StatelessResetKey:              nil,
-		KeepAlivePeriod:                15 * time.Second,
-		DisablePathMTUDiscovery:        false,
+		// Doesn't allow bidirectional streams.
+		MaxIncomingStreams:      -1,
+		MaxIncomingUniStreams:   100,
+		StatelessResetKey:       nil,
+		KeepAlivePeriod:         15 * time.Second,
+		DisablePathMTUDiscovery: false,
 		// We're communicating between peers only, which are built with a single version.
 		DisableVersionNegotiationPackets: true,
 		// We don't want these, you can read more on why here: https://www.rfc-editor.org/rfc/rfc9221.html

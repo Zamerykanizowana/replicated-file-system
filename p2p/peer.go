@@ -9,6 +9,7 @@ import (
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection"
+	"github.com/Zamerykanizowana/replicated-file-system/p2p/tlsconf"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
@@ -34,7 +35,7 @@ func NewPeer(
 	}
 	return &Peer{
 		Peer:     self,
-		connPool: connection.NewPool(&self, connConfig, peers),
+		connPool: connection.NewPool(&self, connConfig, peers, tlsconf.Default(connConfig.GetTLSVersion())),
 	}
 }
 
@@ -50,13 +51,13 @@ func (p *Peer) Run() {
 	p.connPool.Run()
 }
 
-// Send sends the protobuf.Message to all the other peers in the network.
-func (p *Peer) Send(msg *protobuf.Message) error {
+// Broadcast sends the protobuf.Message to all the other peers in the network.
+func (p *Peer) Broadcast(msg *protobuf.Message) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal protobuf message")
 	}
-	if err = p.connPool.Send(data); err != nil {
+	if err = p.connPool.Broadcast(data); err != nil {
 		return errors.Wrap(err, "failed to send the message to some of the peers")
 	}
 	return nil

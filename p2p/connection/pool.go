@@ -17,6 +17,7 @@ func NewPool(
 	self *config.Peer,
 	conf *config.Connection,
 	pcs []*config.Peer,
+	tlsConf *tls.Config,
 ) *Pool {
 	msgs := make(chan message, conf.MessageBufferSize)
 
@@ -37,8 +38,8 @@ func NewPool(
 		handshakeTimeout:  conf.HandshakeTimeout,
 	}
 
-	tlsConf := tlsConfig(conf.GetTLSVersion())
 	tlsConf.VerifyConnection = p.VerifyConnection
+	tlsConf.NextProtos = []string{Protocol}
 	p.tlsConfig = tlsConf
 
 	quicConf := quicConfig(p.handshakeTimeout)
@@ -89,14 +90,14 @@ func (p *Pool) Run() {
 	go p.dialAll()
 }
 
-// Send sends the data to all connections by calling Connection.Send in a separate goroutine
+// Broadcast sends the data to all connections by calling Connection.Send in a separate goroutine
 // and waits for all of them to finish.
-func (p *Pool) Send(data []byte) error {
+func (p *Pool) Broadcast(data []byte) error {
 	var (
 		mErr = &SendMultiErr{}
 		wg   sync.WaitGroup
 	)
-	// TODO add context to the Send parameters.
+	// TODO add context to the Broadcast parameters.
 	ctx := context.Background()
 	wg.Add(len(p.pool))
 	for _, c := range p.pool {

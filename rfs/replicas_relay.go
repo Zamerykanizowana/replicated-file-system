@@ -6,6 +6,6 @@ import (
 
 type ReplicasRelay interface {
 	Run()
-	Send(msg *protobuf.Message) error
+	Broadcast(msg *protobuf.Message) error
 	Receive() (*protobuf.Message, error)
 }

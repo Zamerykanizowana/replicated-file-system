@@ -206,7 +206,7 @@ func (c *Connection) send(ctx context.Context, data []byte) error {
 		done <- struct{}{}
 	}()
 
-	return c.selectResult(ctx, stream.CancelWrite, errCh, done)
+	return c.selectResult(ctx, func(code quic.StreamErrorCode) { stream.CancelWrite(code) }, errCh, done)
 }
 
 func (c *Connection) Status() Status {
