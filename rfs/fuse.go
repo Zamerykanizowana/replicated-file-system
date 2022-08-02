@@ -2,9 +2,10 @@ package rfs
 
 import (
 	"fmt"
-	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"os"
 	"time"
+
+	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -61,7 +62,7 @@ func NewRfsFuseServer(c config.Config, p *p2p.Peer) *RfsFuseServer {
 
 	return &RfsFuseServer{
 		LoopbackRoot: loopbackRoot,
-		RfsRoot:      root,
+		RfsRoot:      root.newRfsRoot(loopbackRoot, nil, "", nil),
 		Config:       c,
 		Peer:         p,
 	}
