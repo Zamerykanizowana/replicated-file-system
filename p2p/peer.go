@@ -2,8 +2,9 @@ package p2p
 
 import (
 	_ "embed"
-	"github.com/google/uuid"
 	"sync"
+
+	"github.com/google/uuid"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -78,7 +79,7 @@ func (t *Transactions) Put(message *protobuf.Message) (transaction *Transaction,
 
 	switch v := message.Type.(type) {
 	case *protobuf.Message_Request:
-		if v.Request != nil {
+		if transaction.Request != nil {
 			log.Error().Interface("msg", message).Msg("Request has already been set in transaction")
 		}
 		transaction.Request = v.Request
