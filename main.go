@@ -6,13 +6,14 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Zamerykanizowana/replicated-file-system/p2p"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
-	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 	"github.com/Zamerykanizowana/replicated-file-system/rfs"
 )
@@ -30,11 +31,6 @@ var (
 )
 
 func main() {
-	conf := mustReadConfig()
-	logging.Configure(&conf.Logging)
-	log.Debug().Object("config", conf).Msg("loaded config")
-	protobuf.SetCompression(conf.Connection.Compression)
-
 	app := &cli.App{
 		Name:     "rfs",
 		HelpName: "Replicated file system using FUSE bindings and peer-2-peer architecture",
@@ -55,7 +51,14 @@ func main() {
 				Aliases:     []string{"n"},
 			},
 		},
-		Action: func(context *cli.Context) error { return run(conf) },
+		Action: func(context *cli.Context) error {
+			conf := mustReadConfig()
+			logging.Configure(&conf.Logging)
+			log.Debug().Object("config", conf).Msg("loaded config")
+			protobuf.SetCompression(conf.Connection.Compression)
+
+			return run(conf)
+		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
@@ -74,14 +77,14 @@ func run(conf *config.Config) error {
 		Str("local_path", conf.Paths.FuseDir).
 		Msg("Initializing FS")
 
-	server := rfs.NewRfsFuseServer(*conf)
+	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection)
+	peer.Run()
+
+	server := rfs.NewRfsFuseServer(*conf, peer)
 
 	if err := server.Mount(); err != nil {
 		return errors.Wrap(err, "unable to mount fuse filesystem")
 	}
-
-	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection)
-	peer.Run()
 
 	// Unmount filesystem upon receiving signal.
 	go func() {
