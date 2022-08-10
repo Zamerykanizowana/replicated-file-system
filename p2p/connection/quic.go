@@ -35,8 +35,11 @@ func closeConn(conn quic.Connection, err error) {
 	if conn == nil {
 		return
 	}
-	// TODO provide error codes.
-	if err = conn.CloseWithError(ConnErrGeneric, err.Error()); err != nil {
+	cErr, ok := err.(connErr)
+	if !ok {
+		log.Fatal().Msg("BUG: error was not connErr")
+	}
+	if err = conn.CloseWithError(quic.ApplicationErrorCode(cErr), err.Error()); err != nil {
 		log.Err(err).
 			Stringer("remote_addr", conn.RemoteAddr()).
 			Msg("failed to closed connection")

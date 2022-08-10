@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"context"
 	_ "embed"
 
 	"github.com/pkg/errors"
@@ -48,7 +49,7 @@ type Peer struct {
 // Run kicks of connection processes for the Peer.
 func (p *Peer) Run() {
 	log.Info().Object("peer", p).Msg("initializing p2p network connection")
-	p.connPool.Run()
+	p.connPool.Run(context.Background())
 }
 
 // Broadcast sends the protobuf.Message to all the other peers in the network.

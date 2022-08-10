@@ -85,9 +85,10 @@ type (
 
 // Run has to be called once per Pool.
 // There's no need to run it in a separate routine.
-func (p *Pool) Run() {
-	go p.listen()
-	go p.dialAll()
+func (p *Pool) Run(ctx context.Context) {
+	ctx = log.With().EmbedObject(p.self).Logger().WithContext(ctx)
+	go p.listen(ctx)
+	go p.dialAll(ctx)
 }
 
 // Broadcast sends the data to all connections by calling Connection.Send in a separate goroutine
@@ -122,28 +123,36 @@ func (p *Pool) Recv() ([]byte, error) {
 	return m.data, m.err
 }
 
+//
+//func (p *Pool) Close() error {
+//	p.listener.Close()
+//	for _, conn := range p.pool {
+//		conn.Close(ctx)
+//	}
+//}
+
 // listen starts accepting connections and runs Connection.Listen for all the
 // connections in a separate goroutine
-func (p *Pool) listen() {
+func (p *Pool) listen(ctx context.Context) {
 	go p.acceptConnections()
 
 	for _, c := range p.pool {
-		go c.Listen()
+		go c.Listen(ctx)
 	}
 }
 
 // acceptConnections waits for a new connection and attempts to add it in a
 // separate goroutine.
 func (p *Pool) acceptConnections() {
-	noopCtx := context.Background()
+	ctx := context.Background()
 	for {
-		conn, err := p.listener.Accept(noopCtx)
+		conn, err := p.listener.Accept(ctx)
 		if err != nil {
 			log.Err(err).Msg("failed to accept incoming connection")
 			continue
 		}
 		go func() {
-			if err = p.add(conn); err != nil {
+			if err = p.add(ctx, conn); err != nil {
 				log.Debug().Err(err).Send()
 			}
 		}()
@@ -151,9 +160,9 @@ func (p *Pool) acceptConnections() {
 }
 
 // dialAll simply runs dial for each peer's Connection in a separate goroutine.
-func (p *Pool) dialAll() {
+func (p *Pool) dialAll(ctx context.Context) {
 	for _, conn := range p.pool {
-		go p.dial(conn)
+		go p.dial(ctx, conn)
 	}
 }
 
@@ -162,13 +171,13 @@ func (p *Pool) dialAll() {
 // it will attempt to dial again.
 // If the dial fails for whatever reason a Backoff mechanism is applied
 // until successful or until the Connection changes state to StatusAlive.
-func (p *Pool) dial(c *Connection) {
+func (p *Pool) dial(ctx context.Context, c *Connection) {
 	backoff := NewBackoff(p.dialBackoffConfig)
 	var err error
 	for {
 		if err = p.dialOnce(c); err != nil {
 			backoff.Next()
-			c.log.Debug().EmbedObject(backoff).Err(err).Msg("failed to dial connection")
+			log.Ctx(ctx).Debug().EmbedObject(backoff).Err(err).Msg("failed to dial connection")
 			continue
 		}
 		backoff.Reset()
@@ -185,12 +194,12 @@ func (p *Pool) dialOnce(c *Connection) error {
 	if err != nil {
 		return err
 	}
-	return p.add(conn)
+	return p.add(ctx, conn)
 }
 
 // add extracts peer name from x509.Certificate's Subject.CommonName.
 // It searches for the peer in the Pool and calls Connection.Establish.
-func (p *Pool) add(quicConn quic.Connection) error {
+func (p *Pool) add(ctx context.Context, quicConn quic.Connection) error {
 	tlsState := quicConn.ConnectionState().TLS
 	// At this point if this cert does not exist,
 	// we have done something very wrong code wise.
@@ -199,23 +208,13 @@ func (p *Pool) add(quicConn quic.Connection) error {
 			len(tlsState.PeerCertificates))
 	}
 
-	pn := tlsState.PeerCertificates[0].Subject.CommonName
-	conn := p.pool[pn]
-	if err := conn.Establish(quicConn); err != nil {
+	peer := tlsState.PeerCertificates[0].Subject.CommonName
+	conn := p.pool[peer]
+	if err := conn.Establish(ctx, quicConn); err != nil {
 		closeConn(quicConn, err)
 		return errors.Wrap(err, "failed to establish connection")
 	}
 	return nil
-}
-
-// handshake should only be run by tlsServer, since tlsClient does it when dialing.
-func (p *Pool) handshake(conn *tls.Conn) error {
-	if p.handshakeTimeout == 0 {
-		return conn.Handshake()
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), p.handshakeTimeout)
-	defer cancel()
-	return conn.HandshakeContext(ctx)
 }
 
 // VerifyConnection checks peer certificates, it expects a single cert
@@ -225,16 +224,13 @@ func (p *Pool) VerifyConnection(state tls.ConnectionState) error {
 		return errors.Errorf("expected exactly one peer certificate, got %d",
 			len(state.PeerCertificates))
 	}
-	var pn string
+	var peer string
 	for _, crt := range state.PeerCertificates {
-		pn = crt.Subject.CommonName
-		if _, ok := p.whitelist[pn]; !ok {
+		peer = crt.Subject.CommonName
+		if _, ok := p.whitelist[peer]; !ok {
 			return errors.Errorf(
-				"SN: %s is not authorized to participate in the peer network", pn)
+				"SN: %s is not authorized to participate in the peer network", peer)
 		}
-	}
-	if p.pool[pn].status == StatusAlive {
-		return errors.Errorf("connection between %s was already established", pn)
 	}
 	return nil
 }

@@ -10,7 +10,6 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
@@ -28,7 +27,6 @@ func NewConnection(
 		mu:          new(sync.Mutex),
 		openNotify:  make(chan struct{}, 1),
 		closeNotify: make(chan struct{}, 1),
-		log:         log.With().Object("peer", peer).Logger(),
 		timeout:     timeout,
 		sink:        sink,
 	}
@@ -47,7 +45,6 @@ type (
 		// Right now there's no such case, but If it's ever the case we should make sure the
 		// goroutine responsible for dialing is shutdown too.
 		closeNotify chan struct{}
-		log         zerolog.Logger
 		timeout     time.Duration
 		sink        chan<- message
 	}
@@ -61,19 +58,13 @@ const (
 	StatusAlive
 )
 
-var (
-	ErrClosed           = errors.New("connection is closed")
-	ErrAlreadyConnected = errors.New("connection was already established")
-	ErrTimedOut         = errors.New("operation timed out")
-)
-
 // Establish attempts to set StatusAlive for Connection and assign net.Conn to it.
 // It also releases WaitForOpen if no errors were generated.
 // If the Connection is already alive it will return an error.
-func (c *Connection) Establish(conn quic.Connection) error {
+func (c *Connection) Establish(ctx context.Context, conn quic.Connection) error {
 	// Fast path, no need to use mutex if we're already alive.
 	if c.status == StatusAlive {
-		return ErrAlreadyConnected
+		return connErrAlreadyEstablished
 	}
 
 	// Slow path.
@@ -81,14 +72,14 @@ func (c *Connection) Establish(conn quic.Connection) error {
 	defer c.mu.Unlock()
 
 	if c.status == StatusAlive {
-		return ErrAlreadyConnected
+		return connErrAlreadyEstablished
 	}
 
 	c.conn = conn
 	c.status = StatusAlive
 	c.openNotify <- struct{}{}
 
-	c.log.Info().Msg("connection established")
+	log.Ctx(ctx).Info().Msg("connection established")
 	return nil
 }
 
@@ -96,15 +87,14 @@ func (c *Connection) Establish(conn quic.Connection) error {
 // If the Connection.Status is StatusDead it will block until WaitForOpen returns.
 // The received data along with any errors is wrapped by message struct and sent
 // to the sink channel.
-func (c *Connection) Listen() {
-	// TODO we might want to have that context setup for each peer and perform graceful shutdown with it.
-	ctx := context.Background()
+func (c *Connection) Listen(ctx context.Context) {
 	for {
 		if c.status == StatusDead {
 			c.WaitForOpen()
 		}
 		data, err := c.Recv(ctx)
 		if err != nil {
+
 			c.sink <- message{err: err}
 			continue
 		}
@@ -115,10 +105,10 @@ func (c *Connection) Listen() {
 // Recv receives data with timeout.
 func (c *Connection) Recv(ctx context.Context) (data []byte, err error) {
 	if c.status == StatusDead {
-		return nil, ErrClosed
+		return nil, connErrClosed
 	}
 	data, err = c.recv(ctx)
-	if err = c.handleConnectionError(err); err != nil {
+	if err = c.handleErrors(ctx, err); err != nil {
 		return nil, errors.Wrap(err, "failed to receive data")
 	}
 	return
@@ -135,12 +125,14 @@ func (c *Connection) recv(ctx context.Context) ([]byte, error) {
 
 	var size int64
 	if err = binary.Read(stream, binary.BigEndian, &size); err != nil {
-		stream.CancelRead(StreamErrRead)
-		return nil, errors.Wrap(err, "failed to read size header")
+		log.Ctx(ctx).Err(err).Msg("failed to read size header")
+		return nil, streamErrReadHeader
 	}
 	if size < 0 {
-		stream.CancelRead(StreamErrInvalidSizeHeader)
-		return nil, errors.New("invalid message size, might be too long")
+		log.Ctx(ctx).Error().
+			Int64("size", size).
+			Msg("invalid header size, might be too long")
+		return nil, streamErrInvalidSizeHeader
 	}
 
 	buf := make([]byte, size)
@@ -149,21 +141,22 @@ func (c *Connection) recv(ctx context.Context) ([]byte, error) {
 
 	go func() {
 		if _, err = io.ReadFull(stream, buf); err != nil {
-			errCh <- err
+			log.Ctx(ctx).Err(err).Msg("failed to read body")
+			errCh <- streamErrReadBody
 			return
 		}
 		done <- struct{}{}
 	}()
 
-	return buf, c.selectResult(ctx, stream.CancelRead, errCh, done)
+	return buf, c.selectResult(ctx, errCh, done)
 }
 
 // Send sends data with timeout.
 func (c *Connection) Send(ctx context.Context, data []byte) (err error) {
 	if c.status == StatusDead {
-		return ErrClosed
+		return connErrClosed
 	}
-	if err = c.handleConnectionError(c.send(ctx, data)); err != nil {
+	if err = c.handleErrors(ctx, c.send(ctx, data)); err != nil {
 		return errors.Wrap(err, "failed to send data")
 	}
 	return
@@ -172,16 +165,6 @@ func (c *Connection) Send(ctx context.Context, data []byte) (err error) {
 // send handles timeout and closes the quic.SendStream with an appropriate quic.StreamErrorCode.
 // It writes the size header before sending the data.
 func (c *Connection) send(ctx context.Context, data []byte) error {
-	// Serialize the length header.
-	lb := make([]byte, 8)
-	binary.BigEndian.PutUint64(lb, uint64(len(data)))
-
-	// Attach the length header along with body.
-	buff := net.Buffers{lb, data}
-
-	done := make(chan struct{})
-	errCh := make(chan error)
-
 	var stream quic.SendStream
 	defer func() {
 		if stream != nil {
@@ -191,6 +174,9 @@ func (c *Connection) send(ctx context.Context, data []byte) error {
 		}
 	}()
 
+	done := make(chan struct{})
+	errCh := make(chan error)
+
 	go func() {
 		var err error
 		stream, err = c.conn.OpenUniStreamSync(ctx)
@@ -199,6 +185,13 @@ func (c *Connection) send(ctx context.Context, data []byte) error {
 			return
 		}
 
+		// Serialize the length header.
+		lb := make([]byte, 8)
+		binary.BigEndian.PutUint64(lb, uint64(len(data)))
+
+		// Attach the length header along with body.
+		buff := net.Buffers{lb, data}
+
 		if _, err = buff.WriteTo(stream); err != nil {
 			errCh <- errors.Wrap(err, "failed to send protobuf.Request")
 			return
@@ -206,7 +199,7 @@ func (c *Connection) send(ctx context.Context, data []byte) error {
 		done <- struct{}{}
 	}()
 
-	return c.selectResult(ctx, func(code quic.StreamErrorCode) { stream.CancelWrite(code) }, errCh, done)
+	return c.selectResult(ctx, errCh, done)
 }
 
 func (c *Connection) Status() Status {
@@ -244,8 +237,8 @@ func (c Status) String() string {
 	}
 }
 
-// handleConnectionError discerns temporary errors from permanent and closes the Connection for the latter.
-func (c *Connection) handleConnectionError(err error) error {
+// handleErrors discerns temporary errors from permanent and closes the Connection for the latter.
+func (c *Connection) handleErrors(ctx context.Context, err error) error {
 	cause := errors.Cause(err)
 	// Unwrap if we can, this helps reveal net.OpError from
 	// tls.permanentError (which is private for whatever reason...).
@@ -259,33 +252,42 @@ func (c *Connection) handleConnectionError(err error) error {
 	case io.EOF:
 		closed = true
 	default:
-		switch v := cause.(type) {
+		switch e := cause.(type) {
 		case *net.OpError:
-			if v.Temporary() == false {
+			if e.Temporary() == false {
 				closed = true
+			}
+		case *quic.StreamError:
+			return streamErr(e.ErrorCode)
+		case *quic.ApplicationError:
+			err = connErr(e.ErrorCode)
+			switch err {
+			case connErrAlreadyEstablished:
+				log.Ctx(ctx).Err(err).Send()
+				return nil
+			default:
+				return err
 			}
 		}
 	}
 	if closed {
 		c.Close(err)
 		c.closeNotify <- struct{}{}
-		return errors.Wrap(err, ErrClosed.Error())
+		return errors.Wrap(err, connErrClosed.Error())
 	}
 	return err
 }
 
 func (c *Connection) selectResult(
 	ctx context.Context,
-	cancel func(code quic.StreamErrorCode),
 	errCh <-chan error,
 	done <-chan struct{},
 ) error {
 	select {
 	case <-ctx.Done():
-		return c.streamContextDone(ctx, cancel)
+		return c.streamContextDone(ctx)
 	case <-time.After(c.timeout):
-		cancel(StreamErrTimeout)
-		return ErrTimedOut
+		return streamErrTimeout
 	case err := <-errCh:
 		return err
 	case <-done:
@@ -293,15 +295,14 @@ func (c *Connection) selectResult(
 	}
 }
 
-func (c *Connection) streamContextDone(ctx context.Context, cancel func(code quic.StreamErrorCode)) error {
-	err := ctx.Err()
-	switch err {
+func (c *Connection) streamContextDone(ctx context.Context) error {
+	switch ctx.Err() {
 	case context.Canceled:
-		cancel(StreamErrCancelled)
+		return streamErrCancelled
 	case context.DeadlineExceeded:
-		cancel(StreamErrTimeout)
-	case nil:
-		c.log.Error().Msg("context was neither subject to any deadline nor was it cancellable")
+		return streamErrTimeout
+	default:
+		log.Ctx(ctx).Error().Msg("context was neither subject to any deadline nor was it cancellable")
 	}
-	return err
+	return nil
 }

@@ -89,12 +89,12 @@ func TestPeer(t *testing.T) {
 		require.NoError(t, err, "Aragorn failed to receive message")
 
 		// We want to compare only the decompressed content with what was sent.
-		msg.GetRequest().GetContent()
-		//msg.GetRequest().Content = nil
-		//aragornRequest.GetRequest().Content = nil
-		//
-		//testCompareMessages(t, aragornRequest, msg)
-		//assert.Equal(t, testHomer, content)
+		content := msg.GetRequest().GetContent()
+		msg.GetRequest().Content = nil
+		aragornRequest.GetRequest().Content = nil
+
+		testCompareMessages(t, aragornRequest, msg)
+		assert.Equal(t, testHomer, content)
 	}()
 
 	go func() {
@@ -103,12 +103,12 @@ func TestPeer(t *testing.T) {
 		require.NoError(t, err, "Gimli failed to receive message")
 
 		// We want to compare only the decompressed content with what was sent.
-		msg.GetRequest().GetContent()
-		//msg.GetRequest().Content = nil
-		//gimliRequest.GetRequest().Content = nil
+		content := msg.GetRequest().GetContent()
+		msg.GetRequest().Content = nil
+		gimliRequest.GetRequest().Content = nil
 
-		//testCompareMessages(t, gimliRequest, msg)
-		//assert.Equal(t, testShakespeare, content)
+		testCompareMessages(t, gimliRequest, msg)
+		assert.Equal(t, testShakespeare, content)
 	}()
 
 	go func() {
