@@ -1,6 +1,7 @@
 MAKEFLAGS += --no-print-directory
 
 PEER ?= Aragorn
+CONFIGPATH ?= config/config.json
 
 APP_NAME = rfs
 OUT_DIR = bin
@@ -26,7 +27,7 @@ export PATH := $(shell go env GOPATH)/bin:$(PATH)
 all: build run
 
 run:
-	./${OUT} -n ${PEER}
+	./${OUT} -n ${PEER} -c ${CONFIGPATH}
 
 # Provide the name of the Fellowship member as the target variable.
 run/docker/%:

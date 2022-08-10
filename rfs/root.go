@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/Zamerykanizowana/replicated-file-system/p2p"
+	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
+
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/rs/zerolog/log"
@@ -12,26 +15,27 @@ import (
 
 type rfsRoot struct {
 	fs.LoopbackNode
+	peer *p2p.Peer
 }
 
-func newRfsRoot(r *fs.LoopbackRoot, p *fs.Inode, n string, st *syscall.Stat_t) fs.InodeEmbedder {
-	node := &rfsRoot{
-		LoopbackNode: fs.LoopbackNode{
-			RootData: r,
-		},
-	}
-	return node
+func (r *rfsRoot) newRfsRoot(lr *fs.LoopbackRoot, p *fs.Inode, n string, st *syscall.Stat_t) fs.InodeEmbedder {
+	return &rfsRoot{
+		peer:         r.peer,
+		LoopbackNode: fs.LoopbackNode{RootData: lr}}
 }
 
 func (n *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode uint32,
 	out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
 	inode, fh, fflags, _ := n.LoopbackNode.Create(ctx, name, flags, mode, out)
 
-	fakeError := syscall.EEXIST
+	var transactionError syscall.Errno
 
-	log.Info().Msg("error for create: EEXIST: File exists")
+	if err := n.peer.Replicate(protobuf.Request_CREATE, nil); err != nil {
+		transactionError = syscall.EEXIST
+		log.Info().Msg("error for create: EEXIST: File exists")
+	}
 
-	return inode, fh, fflags, fakeError
+	return inode, fh, fflags, transactionError
 }
 
 // Link is for hard link, not for symlink
