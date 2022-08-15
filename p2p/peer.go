@@ -3,6 +3,9 @@ package p2p
 import (
 	"context"
 	_ "embed"
+	"sync"
+
+	"github.com/google/uuid"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -37,23 +40,96 @@ func NewPeer(
 	return &Peer{
 		Peer:     self,
 		connPool: connection.NewPool(&self, peers, connConfig, tlsconf.Default(connConfig.GetTLSVersion())),
+		transactions: Transactions{
+			ts: make(map[TransactionId]*Transaction, len(peersConfig)),
+			mu: new(sync.Mutex),
+		},
+		peers: peers,
 	}
 }
 
 // Peer represents a single peer we're running in the p2p network.
-type Peer struct {
-	config.Peer
-	connPool *connection.Pool
+type (
+	Peer struct {
+		config.Peer
+		connPool     *connection.Pool
+		transactions Transactions
+		peers        []*config.Peer
+	}
+	Transactions struct {
+		ts map[TransactionId]*Transaction
+		mu *sync.Mutex
+	}
+	TransactionId = string
+	Transaction   struct {
+		Request    *protobuf.Request
+		Responses  []*protobuf.Response
+		NotifyChan chan *protobuf.Message
+	}
+)
+
+func (t *Transactions) Put(message *protobuf.Message) (transaction *Transaction, created bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if _, created = t.ts[message.Tid]; !created {
+		t.ts[message.Tid] = &Transaction{}
+		t.ts[message.Tid].NotifyChan = make(chan *protobuf.Message)
+	}
+
+	transaction = t.ts[message.Tid]
+
+	switch v := message.Type.(type) {
+	case *protobuf.Message_Request:
+		if transaction.Request != nil {
+			log.Error().Interface("msg", message).Msg("Request has already been set in transaction")
+		}
+		transaction.Request = v.Request
+	case *protobuf.Message_Response:
+		transaction.Responses = append(transaction.Responses, v.Response)
+	}
+
+	return
+}
+
+func (t *Transactions) Delete(tid TransactionId) {
+	t.mu.Lock()
+	delete(t.ts, tid)
+	t.mu.Unlock()
 }
 
 // Run kicks of connection processes for the Peer.
 func (p *Peer) Run() {
 	log.Info().Object("peer", p).Msg("initializing p2p network connection")
 	p.connPool.Run(context.Background())
+	go p.listen()
 }
 
-// Broadcast sends the protobuf.Message to all the other peers in the network.
-func (p *Peer) Broadcast(msg *protobuf.Message) error {
+func (p *Peer) Replicate(requestType protobuf.Request_Type, content []byte) error {
+	transactionId := uuid.New().String()
+	request, err := protobuf.NewRequestMessage(transactionId, p.Name, requestType, content)
+	if err != nil {
+		return err
+	}
+
+	transaction, _ := p.transactions.Put(request)
+
+	if err = p.broadcast(request); err != nil {
+		p.transactions.Delete(request.Tid)
+		return err
+	}
+
+	for range p.peers {
+		msg := <-transaction.NotifyChan
+		response := msg.GetResponse()
+		log.Debug().Interface("response", response).Send()
+	}
+
+	return nil
+}
+
+// broadcast sends the protobuf.Message to all the other peers in the network.
+func (p *Peer) broadcast(msg *protobuf.Message) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal protobuf message")
@@ -64,13 +140,42 @@ func (p *Peer) Broadcast(msg *protobuf.Message) error {
 	return nil
 }
 
-// Receive receives a single protobuf.Message from the network.
+// receive a single protobuf.Message from the network.
 // It blocks until the message is received.
-func (p *Peer) Receive() (*protobuf.Message, error) {
+func (p *Peer) receive() (*protobuf.Message, error) {
 	data, err := p.connPool.Recv()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to receive message from peer")
 	}
-	msg, err := protobuf.ReadMessage(data)
-	return msg, err
+	return protobuf.ReadMessage(data)
+}
+
+func (p *Peer) handleTransaction(ch <-chan *protobuf.Message) {
+	for range p.peers {
+		msg := <-ch
+
+		log.Info().Interface("msg", msg).Msg("message received")
+
+		if request := msg.GetRequest(); request != nil {
+			response := protobuf.NewResponseMessage(msg.Tid, p.Name, protobuf.Response_ACK, nil)
+			if err := p.broadcast(response); err != nil {
+				log.Err(err).Interface("response", response).Msg("error occurred while broadcasting a response")
+			}
+		}
+	}
+}
+
+func (p *Peer) listen() {
+	for {
+		msg, err := p.receive()
+		if err != nil {
+			log.Err(err).Msg("Error while collecting a message")
+			continue
+		}
+		transaction, created := p.transactions.Put(msg)
+		if created {
+			go p.handleTransaction(transaction.NotifyChan)
+		}
+		transaction.NotifyChan <- msg
+	}
 }

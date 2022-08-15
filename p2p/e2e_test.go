@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
@@ -48,16 +46,24 @@ func TestPeer(t *testing.T) {
 		}
 	}
 
-	aragorn := &Peer{
+	Aragorn := &Peer{
 		Peer: *aragornsConf,
+		transactions: Transactions{
+			ts: make(map[TransactionId]*Transaction, 1),
+			mu: new(sync.Mutex),
+		},
 		connPool: connection.NewPool(
 			aragornsConf,
 			[]*config.Peer{gimlisConf},
 			&conf.Connection,
 			testTLSConf(t, "Aragorn")),
 	}
-	gimli := &Peer{
+	Gimli := &Peer{
 		Peer: *gimlisConf,
+		transactions: Transactions{
+			ts: make(map[TransactionId]*Transaction, 1),
+			mu: new(sync.Mutex),
+		},
 		connPool: connection.NewPool(
 			gimlisConf,
 			[]*config.Peer{aragornsConf},
@@ -65,64 +71,24 @@ func TestPeer(t *testing.T) {
 			testTLSConf(t, "Gimli")),
 	}
 
-	aragorn.Run()
-	gimli.Run()
-
-	gimliRequest, err := protobuf.NewRequestMessage(
-		uuid.New().String(),
-		"Aragorn",
-		protobuf.Request_CREATE,
-		testShakespeare)
-	require.NoError(t, err)
-
-	aragornRequest, err := protobuf.NewRequestMessage(
-		uuid.New().String(),
-		"Gimli",
-		protobuf.Request_CREATE,
-		testHomer)
-	require.NoError(t, err)
+	Aragorn.Run()
+	Gimli.Run()
 
 	time.Sleep(5 * time.Second)
 
 	wg := sync.WaitGroup{}
-	wg.Add(4)
+	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
-		msg, err := aragorn.Receive()
-		require.NoError(t, err, "Aragorn failed to receive message")
-
-		// We want to compare only the decompressed content with what was sent.
-		content := msg.GetRequest().GetContent()
-		msg.GetRequest().Content = nil
-		aragornRequest.GetRequest().Content = nil
-
-		testCompareMessages(t, aragornRequest, msg)
-		assert.Equal(t, testHomer, content)
+		require.NoError(t, Aragorn.Replicate(protobuf.Request_CREATE, testHomer),
+			"Aragorn failed to send message")
 	}()
 
 	go func() {
 		defer wg.Done()
-		msg, err := gimli.Receive()
-		require.NoError(t, err, "Gimli failed to receive message")
-
-		// We want to compare only the decompressed content with what was sent.
-		content := msg.GetRequest().GetContent()
-		msg.GetRequest().Content = nil
-		gimliRequest.GetRequest().Content = nil
-
-		testCompareMessages(t, gimliRequest, msg)
-		assert.Equal(t, testShakespeare, content)
-	}()
-
-	go func() {
-		defer wg.Done()
-		require.NoError(t, aragorn.Broadcast(gimliRequest), "Aragorn failed to send message")
-	}()
-
-	go func() {
-		defer wg.Done()
-		require.NoError(t, gimli.Broadcast(aragornRequest), "Gimli failed to send message")
+		require.NoError(t, Gimli.Replicate(protobuf.Request_CREATE, testShakespeare),
+			"Gimli failed to send message")
 	}()
 
 	wg.Wait()
@@ -153,16 +119,4 @@ func testTLSConf(t *testing.T, peer string) *tls.Config {
 	tc.Certificates = []tls.Certificate{cert}
 
 	return tc
-}
-
-func testCompareMessages(t *testing.T, expected, actual *protobuf.Message) {
-	t.Helper()
-	assert.Equal(t, expected.PeerName, actual.PeerName)
-	assert.Equal(t, expected.Tid, actual.Tid)
-	switch actual.Type.(type) {
-	case *protobuf.Message_Request:
-		assert.Equal(t, expected.GetRequest().Type, actual.GetRequest().Type)
-	case *protobuf.Message_Response:
-		panic("implement me!")
-	}
 }

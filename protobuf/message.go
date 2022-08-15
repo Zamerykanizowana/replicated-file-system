@@ -61,7 +61,7 @@ func ReadMessage(raw []byte) (*Message, error) {
 	if err := proto.Unmarshal(raw, &msg); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal Message")
 	}
-	if req, ok := msg.Type.(*Message_Request); ok {
+	if req, ok := msg.Type.(*Message_Request); ok && req.Request.Content != nil {
 		var err error
 		req.Request.Content, err = decompress(req.Request.Content)
 		if err != nil {
