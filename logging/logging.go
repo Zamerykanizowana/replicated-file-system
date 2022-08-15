@@ -21,10 +21,15 @@ func Configure(conf *config.Logging) {
 	zerolog.ErrorFieldName = "error.message"
 	zerolog.ErrorStackFieldName = "error.stack"
 
-	log.Logger = log.With().Caller().Stack().Logger()
+	logger := log.With().
+		Caller().
+		Stack().
+		Logger()
 	if term.IsTerminal(int(os.Stdout.Fd())) {
-		log.Logger = log.Logger.Output(zerolog.NewConsoleWriter())
+		logger = logger.Output(zerolog.NewConsoleWriter())
 	}
+	log.Logger = logger
+	zerolog.DefaultContextLogger = &logger
 
 	level, err := zerolog.ParseLevel(conf.Level)
 	if err != nil {

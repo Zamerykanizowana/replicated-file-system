@@ -10,13 +10,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
+	"github.com/Zamerykanizowana/replicated-file-system/logging"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p/tlsconf"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
@@ -32,6 +32,7 @@ var testHomer []byte
 var testConf []byte
 
 func TestPeer(t *testing.T) {
+	logging.Configure(&config.Logging{Level: "debug"})
 	conf := config.MustUnmarshalConfig(testConf)
 	var (
 		aragornsConf *config.Peer
@@ -66,9 +67,6 @@ func TestPeer(t *testing.T) {
 	aragorn.Run()
 	gimli.Run()
 
-	wg := sync.WaitGroup{}
-	wg.Add(4)
-
 	gimliRequest, err := protobuf.NewRequestMessage(
 		uuid.New().String(),
 		"Aragorn",
@@ -82,6 +80,9 @@ func TestPeer(t *testing.T) {
 		protobuf.Request_CREATE,
 		testHomer)
 	require.NoError(t, err)
+
+	wg := sync.WaitGroup{}
+	wg.Add(4)
 
 	go func() {
 		defer wg.Done()
@@ -122,8 +123,6 @@ func TestPeer(t *testing.T) {
 	}()
 
 	wg.Wait()
-
-	time.Sleep(10 * time.Second)
 }
 
 //go:embed test/certs

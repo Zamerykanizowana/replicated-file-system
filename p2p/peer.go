@@ -71,5 +71,6 @@ func (p *Peer) Receive() (*protobuf.Message, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to receive message from peer")
 	}
-	return protobuf.ReadMessage(data)
+	msg, err := protobuf.ReadMessage(data)
+	return msg, err
 }

@@ -13,7 +13,15 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
 
+type Perspective uint8
+
+const (
+	Listener Perspective = iota
+	Dialer
+)
+
 func NewPool(
+	perspective Perspective,
 	self *config.Peer,
 	conf *config.Connection,
 	pcs []*config.Peer,
@@ -29,6 +37,7 @@ func NewPool(
 	}
 
 	p := &Pool{
+		perspective:       perspective,
 		self:              self,
 		net:               conf.Network,
 		whitelist:         whitelist,
@@ -50,6 +59,7 @@ func NewPool(
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create TLS listener")
 	}
+	p.dialFunc = quic.DialAddrContext
 
 	return p
 }
@@ -58,6 +68,8 @@ type (
 	// Pool manages each Connection, it governs the net.Listener and net.Dialer setup,
 	// along with TLS configuration and peer authentication.
 	Pool struct {
+		// perspective defines whether we're listening or dialing.
+		perspective Perspective
 		// self describes the peer this Pool was created for.
 		self *config.Peer
 		net  string
@@ -65,8 +77,10 @@ type (
 		// matches any of the peer's names.
 		whitelist map[peerName]struct{}
 		tlsConfig *tls.Config
-		listener  quic.Listener
-		quicConf  *quic.Config
+		// QUIC related configuration and listening/dialing facilities.
+		quicConf *quic.Config
+		listener quic.Listener
+		dialFunc quicDial
 		// pool is the map storing each Connection. The key is peer's name.
 		pool map[peerName]*Connection
 		// msgs is a buffered channel onto which each Connection.Send publishes message.
@@ -87,8 +101,12 @@ type (
 // There's no need to run it in a separate routine.
 func (p *Pool) Run(ctx context.Context) {
 	ctx = log.With().EmbedObject(p.self).Logger().WithContext(ctx)
-	go p.listen(ctx)
-	go p.dialAll(ctx)
+	switch p.perspective {
+	case Listener:
+		go p.listen(ctx)
+	case Dialer:
+		go p.dialAll(ctx)
+	}
 }
 
 // Broadcast sends the data to all connections by calling Connection.Send in a separate goroutine
@@ -184,13 +202,16 @@ func (p *Pool) dial(ctx context.Context, c *Connection) {
 	}
 }
 
+// dialOnce performs a single dial attempt.
+// It blocks when the connection was already established and
+// waits for it to be closed to make its attempt.
 func (p *Pool) dialOnce(c *Connection) error {
 	if c.status == StatusAlive {
 		c.WaitForClosed()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.handshakeTimeout)
 	defer cancel()
-	conn, err := quic.DialAddrContext(ctx, c.peer.Address, p.tlsConfig, p.quicConf)
+	conn, err := p.dialFunc(ctx, c.peer.Address, p.tlsConfig, p.quicConf)
 	if err != nil {
 		return err
 	}
@@ -200,18 +221,13 @@ func (p *Pool) dialOnce(c *Connection) error {
 // add extracts peer name from x509.Certificate's Subject.CommonName.
 // It searches for the peer in the Pool and calls Connection.Establish.
 func (p *Pool) add(ctx context.Context, quicConn quic.Connection) error {
-	tlsState := quicConn.ConnectionState().TLS
-	// At this point if this cert does not exist,
-	// we have done something very wrong code wise.
-	if len(tlsState.PeerCertificates) != 1 {
-		return errors.Errorf("expected excatly one peer certificate, got: %d",
-			len(tlsState.PeerCertificates))
-	}
-
-	peer := tlsState.PeerCertificates[0].Subject.CommonName
+	// VerifyConnection makes sure we don't end up with nil pointers or missing map entries here.
+	peer := quicConn.ConnectionState().TLS.
+		PeerCertificates[0].
+		Subject.
+		CommonName
 	conn := p.pool[peer]
 	if err := conn.Establish(ctx, quicConn); err != nil {
-		closeConn(quicConn, err)
 		return errors.Wrap(err, "failed to establish connection")
 	}
 	return nil
@@ -231,6 +247,9 @@ func (p *Pool) VerifyConnection(state tls.ConnectionState) error {
 			return errors.Errorf(
 				"SN: %s is not authorized to participate in the peer network", peer)
 		}
+	}
+	if p.pool[peer].status == StatusAlive {
+		return connErrAlreadyEstablished
 	}
 	return nil
 }

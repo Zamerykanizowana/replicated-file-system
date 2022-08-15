@@ -25,8 +25,8 @@ func NewConnection(
 		conn:        nil,
 		status:      StatusDead,
 		mu:          new(sync.Mutex),
-		openNotify:  make(chan struct{}, 1),
-		closeNotify: make(chan struct{}, 1),
+		openNotify:  make(chan struct{}),
+		closeNotify: make(chan struct{}),
 		timeout:     timeout,
 		sink:        sink,
 	}
@@ -60,7 +60,11 @@ const (
 
 // Establish attempts to set StatusAlive for Connection and assign net.Conn to it.
 // It also releases WaitForOpen if no errors were generated.
-// If the Connection is already alive it will return an error.
+// If the Connection is already alive it will return connErrAlreadyEstablished.
+// Unlike standard TCP implementation, If we end up "establishing" two connections through
+// dialing and listening, we should not close the latter connection as QUIC be design operates on a single
+// connection with multiple streams and the go-quic library complies having just a single connection
+// manager per peer address.
 func (c *Connection) Establish(ctx context.Context, conn quic.Connection) error {
 	// Fast path, no need to use mutex if we're already alive.
 	if c.status == StatusAlive {
@@ -263,7 +267,7 @@ func (c *Connection) handleErrors(ctx context.Context, err error) error {
 			err = connErr(e.ErrorCode)
 			switch err {
 			case connErrAlreadyEstablished:
-				log.Ctx(ctx).Err(err).Send()
+				log.Ctx(ctx).Debug().Err(err).Send()
 				return nil
 			default:
 				return err
