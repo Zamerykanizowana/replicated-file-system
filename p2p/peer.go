@@ -10,7 +10,7 @@ import (
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection"
-	"github.com/Zamerykanizowana/replicated-file-system/p2p/tlsconf"
+	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection/tlsconf"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
@@ -36,7 +36,7 @@ func NewPeer(
 	}
 	return &Peer{
 		Peer:     self,
-		connPool: connection.NewPool(&self, connConfig, peers, tlsconf.Default(connConfig.GetTLSVersion())),
+		connPool: connection.NewPool(&self, peers, connConfig, tlsconf.Default(connConfig.GetTLSVersion())),
 	}
 }
 

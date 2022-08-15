@@ -69,9 +69,11 @@ func (e streamErr) Error() string {
 type connErr quic.ApplicationErrorCode
 
 const (
-	connErrAlreadyEstablished connErr = iota
+	connErrUnspecified connErr = iota
+	connErrAlreadyEstablished
 	connErrClosed
 	connErrCancelled
+	connErrResolved
 )
 
 func (e connErr) Error() string {
@@ -82,7 +84,9 @@ func (e connErr) Error() string {
 		return "connection is closed"
 	case connErrCancelled:
 		return "context was cancelled"
+	case connErrResolved:
+		return "connection was resolved and both peers have agreed to close it"
 	default:
-		return "unknown connection error"
+		return "unspecified connection error"
 	}
 }

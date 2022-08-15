@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -18,17 +19,17 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection"
-	"github.com/Zamerykanizowana/replicated-file-system/p2p/tlsconf"
+	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection/tlsconf"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
-//go:embed test/shakespeare.txt
+//go:embed test_data/shakespeare.txt
 var testShakespeare []byte
 
-//go:embed test/homer.txt
+//go:embed test_data/homer.txt
 var testHomer []byte
 
-//go:embed test/config.json
+//go:embed test_data/config.json
 var testConf []byte
 
 func TestPeer(t *testing.T) {
@@ -51,16 +52,16 @@ func TestPeer(t *testing.T) {
 		Peer: *aragornsConf,
 		connPool: connection.NewPool(
 			aragornsConf,
-			&conf.Connection,
 			[]*config.Peer{gimlisConf},
+			&conf.Connection,
 			testTLSConf(t, "Aragorn")),
 	}
 	gimli := &Peer{
 		Peer: *gimlisConf,
 		connPool: connection.NewPool(
 			gimlisConf,
-			&conf.Connection,
 			[]*config.Peer{aragornsConf},
+			&conf.Connection,
 			testTLSConf(t, "Gimli")),
 	}
 
@@ -80,6 +81,8 @@ func TestPeer(t *testing.T) {
 		protobuf.Request_CREATE,
 		testHomer)
 	require.NoError(t, err)
+
+	time.Sleep(5 * time.Second)
 
 	wg := sync.WaitGroup{}
 	wg.Add(4)
@@ -125,13 +128,13 @@ func TestPeer(t *testing.T) {
 	wg.Wait()
 }
 
-//go:embed test/certs
+//go:embed test_data/certs
 var testCerts embed.FS
 
 func testTLSConf(t *testing.T, peer string) *tls.Config {
 	t.Helper()
 	mustOpen := func(fn string) []byte {
-		data, err := testCerts.ReadFile("test/certs/" + fn + ".test")
+		data, err := testCerts.ReadFile("test_data/certs/" + fn + ".test")
 		require.NoError(t, err)
 		return data
 	}

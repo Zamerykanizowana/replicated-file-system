@@ -13,38 +13,29 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
 
-type Perspective uint8
-
-const (
-	Listener Perspective = iota
-	Dialer
-)
-
 func NewPool(
-	perspective Perspective,
-	self *config.Peer,
-	conf *config.Connection,
-	pcs []*config.Peer,
+	host *config.Peer,
+	peers []*config.Peer,
+	connConf *config.Connection,
 	tlsConf *tls.Config,
 ) *Pool {
-	msgs := make(chan message, conf.MessageBufferSize)
+	msgs := make(chan message, connConf.MessageBufferSize)
 
-	whitelist := make(map[peerName]struct{}, len(pcs))
+	whitelist := make(map[peerName]struct{}, len(peers))
 	cs := make(map[peerName]*Connection, len(whitelist))
-	for _, p := range pcs {
-		whitelist[p.Name] = struct{}{}
-		cs[p.Name] = NewConnection(p, conf.SendRecvTimeout, msgs)
+	for _, peer := range peers {
+		whitelist[peer.Name] = struct{}{}
+		cs[peer.Name] = NewConnection(host, peer, connConf.SendRecvTimeout, msgs)
 	}
 
 	p := &Pool{
-		perspective:       perspective,
-		self:              self,
-		net:               conf.Network,
+		host:              host,
+		net:               connConf.Network,
 		whitelist:         whitelist,
 		pool:              cs,
 		msgs:              msgs,
-		dialBackoffConfig: &conf.DialBackoff,
-		handshakeTimeout:  conf.HandshakeTimeout,
+		dialBackoffConfig: &connConf.DialBackoff,
+		handshakeTimeout:  connConf.HandshakeTimeout,
 	}
 
 	tlsConf.VerifyConnection = p.VerifyConnection
@@ -55,7 +46,7 @@ func NewPool(
 	p.quicConf = quicConf
 
 	var err error
-	p.listener, err = quic.ListenAddr(self.Address, tlsConf, quicConf)
+	p.listener, err = quic.ListenAddr(host.Address, tlsConf, quicConf)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create TLS listener")
 	}
@@ -68,10 +59,8 @@ type (
 	// Pool manages each Connection, it governs the net.Listener and net.Dialer setup,
 	// along with TLS configuration and peer authentication.
 	Pool struct {
-		// perspective defines whether we're listening or dialing.
-		perspective Perspective
-		// self describes the peer this Pool was created for.
-		self *config.Peer
+		// host describes the peer this Pool was created for.
+		host *config.Peer
 		net  string
 		// whitelist is used during VerifyConnection to check if the Subject.CommonName
 		// matches any of the peer's names.
@@ -86,7 +75,8 @@ type (
 		// msgs is a buffered channel onto which each Connection.Send publishes message.
 		msgs              chan message
 		dialBackoffConfig *config.Backoff
-		handshakeTimeout  time.Duration
+		// TODO correct naming here!
+		handshakeTimeout time.Duration
 	}
 	// message allows passing errors along with data through channels.
 	message struct {
@@ -100,13 +90,9 @@ type (
 // Run has to be called once per Pool.
 // There's no need to run it in a separate routine.
 func (p *Pool) Run(ctx context.Context) {
-	ctx = log.With().EmbedObject(p.self).Logger().WithContext(ctx)
-	switch p.perspective {
-	case Listener:
-		go p.listen(ctx)
-	case Dialer:
-		go p.dialAll(ctx)
-	}
+	ctx = log.With().EmbedObject(p.host).Logger().WithContext(ctx)
+	go p.listen(ctx)
+	go p.dialAll(ctx)
 }
 
 // Broadcast sends the data to all connections by calling Connection.Send in a separate goroutine
@@ -152,7 +138,7 @@ func (p *Pool) Recv() ([]byte, error) {
 // listen starts accepting connections and runs Connection.Listen for all the
 // connections in a separate goroutine
 func (p *Pool) listen(ctx context.Context) {
-	go p.acceptConnections()
+	go p.acceptConnections(ctx)
 
 	for _, c := range p.pool {
 		go c.Listen(ctx)
@@ -161,8 +147,7 @@ func (p *Pool) listen(ctx context.Context) {
 
 // acceptConnections waits for a new connection and attempts to add it in a
 // separate goroutine.
-func (p *Pool) acceptConnections() {
-	ctx := context.Background()
+func (p *Pool) acceptConnections(ctx context.Context) {
 	for {
 		conn, err := p.listener.Accept(ctx)
 		if err != nil {
@@ -170,7 +155,9 @@ func (p *Pool) acceptConnections() {
 			continue
 		}
 		go func() {
-			if err = p.add(ctx, conn); err != nil {
+			ctx, cancel := contextWithOptionalTimeout(ctx, p.handshakeTimeout)
+			defer cancel()
+			if err = p.add(ctx, Server, conn); err != nil {
 				log.Debug().Err(err).Send()
 			}
 		}()
@@ -209,25 +196,26 @@ func (p *Pool) dialOnce(c *Connection) error {
 	if c.status == StatusAlive {
 		c.WaitForClosed()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), p.handshakeTimeout)
+	ctx, cancel := contextWithOptionalTimeout(context.Background(), p.handshakeTimeout)
 	defer cancel()
 	conn, err := p.dialFunc(ctx, c.peer.Address, p.tlsConfig, p.quicConf)
 	if err != nil {
 		return err
 	}
-	return p.add(ctx, conn)
+	return p.add(ctx, Client, conn)
 }
 
 // add extracts peer name from x509.Certificate's Subject.CommonName.
 // It searches for the peer in the Pool and calls Connection.Establish.
-func (p *Pool) add(ctx context.Context, quicConn quic.Connection) error {
+func (p *Pool) add(ctx context.Context, perspective Perspective, quicConn quic.Connection) error {
 	// VerifyConnection makes sure we don't end up with nil pointers or missing map entries here.
 	peer := quicConn.ConnectionState().TLS.
 		PeerCertificates[0].
 		Subject.
 		CommonName
 	conn := p.pool[peer]
-	if err := conn.Establish(ctx, quicConn); err != nil {
+	if err := conn.Establish(ctx, perspective, quicConn); err != nil {
+		closeConn(quicConn, err)
 		return errors.Wrap(err, "failed to establish connection")
 	}
 	return nil
@@ -247,9 +235,6 @@ func (p *Pool) VerifyConnection(state tls.ConnectionState) error {
 			return errors.Errorf(
 				"SN: %s is not authorized to participate in the peer network", peer)
 		}
-	}
-	if p.pool[peer].status == StatusAlive {
-		return connErrAlreadyEstablished
 	}
 	return nil
 }

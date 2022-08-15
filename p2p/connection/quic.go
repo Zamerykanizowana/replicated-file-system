@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/rs/zerolog/log"
 )
 
 type quicDial = func(
@@ -37,19 +36,4 @@ func quicConfig(handshakeTimeout time.Duration) *quic.Config {
 		EnableDatagrams: false,
 	}
 	return conf
-}
-
-func closeConn(conn quic.Connection, err error) {
-	if conn == nil {
-		return
-	}
-	cErr, ok := err.(connErr)
-	if !ok {
-		log.Fatal().Msg("BUG: error was not connErr")
-	}
-	if err = conn.CloseWithError(quic.ApplicationErrorCode(cErr), err.Error()); err != nil {
-		log.Err(err).
-			Stringer("remote_addr", conn.RemoteAddr()).
-			Msg("failed to close connection")
-	}
 }
