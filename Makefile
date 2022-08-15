@@ -91,6 +91,9 @@ go/format:
 go/test:
 	go test -v -race ./...
 
+go/test-e2e:
+	go test -tags e2e -v ./p2p
+
 go/verify:
 	go vet ./...
 
