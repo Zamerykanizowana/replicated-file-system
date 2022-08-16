@@ -116,6 +116,7 @@ func (c *Connection) Establish(
 		return connErrAlreadyEstablished
 	}
 
+	c.perspectiveResolver.Reset()
 	c.conn = conn
 	c.perspective = perspective
 	c.status = StatusAlive

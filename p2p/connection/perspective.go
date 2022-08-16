@@ -29,15 +29,14 @@ func (p Perspective) String() string {
 
 func newPerspectiveResolver() *perspectiveResolver {
 	return &perspectiveResolver{
-		counter: new(atomic.Uint32),
-		recv:    recv,
-		send:    send,
+		recv: recv,
+		send: send,
 	}
 }
 
 type (
 	perspectiveResolver struct {
-		counter *atomic.Uint32
+		counter atomic.Uint32
 		recv    recvFuncDef
 		send    sendFuncDef
 	}
@@ -56,9 +55,9 @@ func (p *perspectiveResolver) Resolve(
 	case err != nil:
 		return errors.Wrapf(err, "failed to resolve connection perspective for %s", perspective)
 	case !resolved && !fallback():
-		return errors.Wrap(connErrResolved, "perspective was not resolved and fallback did not apply")
+		return errors.Wrap(connErrNotResolved, "perspective was not resolved and fallback did not apply")
 	case resolved && !first:
-		return errors.Wrap(connErrResolved, "perspective was not the first one to have been resolved")
+		return errors.Wrap(connErrNotResolved, "perspective was not the first one to have been resolved")
 	}
 	return nil
 }
@@ -68,14 +67,14 @@ func (p *perspectiveResolver) resolve(
 	perspective Perspective,
 	conn quic.Connection,
 ) (resolved, first bool, err error) {
+	ctr := p.counter.Add(1)
+	first = ctr == 1
+
 	rcv := make(chan message)
 	go func() {
 		data, err := p.recv(ctx, conn)
 		rcv <- message{data: data, err: err}
 	}()
-
-	ctr := p.counter.Add(1)
-	first = ctr == 1
 
 	resolvent := perspectiveResolvent{Perspective: perspective, ctr: ctr}
 	if err = p.send(ctx, conn, resolvent.Encode()); err != nil {

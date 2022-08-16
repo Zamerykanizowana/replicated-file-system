@@ -2,7 +2,6 @@ package connection
 
 import (
 	"context"
-	"sync/atomic"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -13,7 +12,6 @@ import (
 func TestPerspectiveResolver_Resolve(t *testing.T) {
 	t.Run("return no error if resolved", func(t *testing.T) {
 		resolver := &perspectiveResolver{
-			counter: new(atomic.Uint32),
 			recv: func(ctx context.Context, ac uniStreamAcceptor) ([]byte, error) {
 				resolvent := perspectiveResolvent{Perspective: Client, ctr: 1}
 				return resolvent.Encode(), nil
@@ -29,7 +27,6 @@ func TestPerspectiveResolver_Resolve(t *testing.T) {
 
 	t.Run("return no error if fallback applies", func(t *testing.T) {
 		resolver := &perspectiveResolver{
-			counter: new(atomic.Uint32),
 			recv: func(ctx context.Context, ac uniStreamAcceptor) ([]byte, error) {
 				resolvent := perspectiveResolvent{Perspective: Client, ctr: 2}
 				return resolvent.Encode(), nil
@@ -45,7 +42,6 @@ func TestPerspectiveResolver_Resolve(t *testing.T) {
 
 	t.Run("return error if fallback doesn't apply", func(t *testing.T) {
 		resolver := &perspectiveResolver{
-			counter: new(atomic.Uint32),
 			recv: func(ctx context.Context, ac uniStreamAcceptor) ([]byte, error) {
 				resolvent := perspectiveResolvent{Perspective: Client, ctr: 2}
 				return resolvent.Encode(), nil
@@ -58,12 +54,11 @@ func TestPerspectiveResolver_Resolve(t *testing.T) {
 
 		err := resolver.Resolve(context.Background(), Server, nil, func() bool { return false })
 		require.Error(t, err)
-		assert.ErrorIs(t, err, connErrResolved)
+		assert.ErrorIs(t, err, connErrNotResolved)
 	})
 
 	t.Run("mismatched counters, perspective is not resolved", func(t *testing.T) {
 		resolver := &perspectiveResolver{
-			counter: new(atomic.Uint32),
 			recv: func(ctx context.Context, ac uniStreamAcceptor) ([]byte, error) {
 				resolvent := perspectiveResolvent{Perspective: Client, ctr: 2}
 				return resolvent.Encode(), nil
@@ -76,12 +71,11 @@ func TestPerspectiveResolver_Resolve(t *testing.T) {
 
 		err := resolver.Resolve(context.Background(), Server, nil, func() bool { return false })
 		require.Error(t, err)
-		assert.ErrorIs(t, err, connErrResolved)
+		assert.ErrorIs(t, err, connErrNotResolved)
 	})
 
 	t.Run("perspectives differ, return error", func(t *testing.T) {
 		resolver := &perspectiveResolver{
-			counter: new(atomic.Uint32),
 			recv: func(ctx context.Context, ac uniStreamAcceptor) ([]byte, error) {
 				resolvent := perspectiveResolvent{Perspective: Client, ctr: 1}
 				return resolvent.Encode(), nil
@@ -98,7 +92,6 @@ func TestPerspectiveResolver_Resolve(t *testing.T) {
 	t.Run("return receiving error", func(t *testing.T) {
 		recvErr := errors.New("receive error")
 		resolver := &perspectiveResolver{
-			counter: new(atomic.Uint32),
 			recv: func(ctx context.Context, ac uniStreamAcceptor) ([]byte, error) {
 				return nil, recvErr
 			},

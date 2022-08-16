@@ -73,7 +73,7 @@ const (
 	connErrAlreadyEstablished
 	connErrClosed
 	connErrCancelled
-	connErrResolved
+	connErrNotResolved
 )
 
 func (e connErr) Error() string {
@@ -84,8 +84,8 @@ func (e connErr) Error() string {
 		return "connection is closed"
 	case connErrCancelled:
 		return "context was cancelled"
-	case connErrResolved:
-		return "connection was resolved and both peers have agreed to close it"
+	case connErrNotResolved:
+		return "connection was not resolved and both peers have agreed to close it"
 	default:
 		return "unspecified connection error"
 	}
