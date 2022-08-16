@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"context"
 	_ "embed"
 	"sync"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection"
+	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection/tlsconf"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
@@ -37,7 +39,7 @@ func NewPeer(
 	}
 	return &Peer{
 		Peer:     self,
-		connPool: connection.NewPool(&self, connConfig, peers),
+		connPool: connection.NewPool(&self, peers, connConfig, tlsconf.Default(connConfig.GetTLSVersion())),
 		transactions: Transactions{
 			ts: make(map[TransactionId]*Transaction, len(peersConfig)),
 			mu: new(sync.Mutex),
@@ -99,7 +101,7 @@ func (t *Transactions) Delete(tid TransactionId) {
 // Run kicks of connection processes for the Peer.
 func (p *Peer) Run() {
 	log.Info().Object("peer", p).Msg("initializing p2p network connection")
-	p.connPool.Run()
+	p.connPool.Run(context.Background())
 	go p.listen()
 }
 
@@ -132,7 +134,7 @@ func (p *Peer) broadcast(msg *protobuf.Message) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal protobuf message")
 	}
-	if err = p.connPool.Send(data); err != nil {
+	if err = p.connPool.Broadcast(data); err != nil {
 		return errors.Wrap(err, "failed to send the message to some of the peers")
 	}
 	return nil

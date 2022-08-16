@@ -21,7 +21,7 @@ import (
 var defaultConfig []byte
 
 func Default() *Config {
-	return mustUnmarshalConfig(defaultConfig)
+	return MustUnmarshalConfig(defaultConfig)
 }
 
 func Read(path string) *Config {
@@ -37,7 +37,7 @@ func Read(path string) *Config {
 			Str("filepath", path).
 			Msg("failed to read config file contents")
 	}
-	return mustUnmarshalConfig(raw)
+	return MustUnmarshalConfig(raw)
 }
 
 type (
@@ -67,12 +67,12 @@ type (
 		// MessageBufferSize is the buffer of the global message channel onto which
 		// goroutines listening on peer Connection push received messages.
 		MessageBufferSize uint `json:"message_buffer_size" validate:"required,gt=0"`
-		// SendRecvTimeout sets the timeout for Recv and Send operations.
+		// SendRecvTimeout sets the timeout for Recv and Broadcast operations.
 		SendRecvTimeout time.Duration `json:"send_recv_timeout" validate:"required,gt=0"`
 		// HandshakeTimeout sets the timeout for handshakes.
 		HandshakeTimeout time.Duration `json:"handshake_timeout" validate:"required,gt=0"`
 		// Network is the transport scheme string, e.g. 'tcp'.
-		Network string `json:"network" validate:"required,oneof=tcp"`
+		Network string `json:"network" validate:"required,oneof=tcp quic"`
 		// Compression defines content compression for gzip, for more details go to protobuf/gzip.go.
 		Compression string `json:"compression" validate:"required,oneof=NoCompression BestSpeed BestCompression DefaultCompression HuffmanOnly"`
 	}
@@ -147,7 +147,7 @@ func (c Connection) GetTLSVersion() uint16 {
 
 var validate = validator.New()
 
-func mustUnmarshalConfig(raw []byte) *Config {
+func MustUnmarshalConfig(raw []byte) *Config {
 	var (
 		conf Config
 		err  error

@@ -1,0 +1,16 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+skin rose
+
+header P2P Connection - perspective resolving
+
+participant Host
+participant Peer
+
+autonumber
+
+Host --> Peer: Dial
+Peer --> Host: Dial
+
+@enduml
