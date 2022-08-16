@@ -37,6 +37,9 @@ func (s *SendMultiErr) Empty() bool {
 	return len(s.errs) == 0
 }
 
+type streamCloserErr struct {
+}
+
 // streamErr represents common quic.Stream errors with a meaningful message.
 type streamErr quic.StreamErrorCode
 
@@ -46,6 +49,7 @@ const (
 	streamErrInvalidSizeHeader
 	streamErrReadHeader
 	streamErrReadBody
+	streamErrWrite
 )
 
 func (e streamErr) Error() string {
@@ -60,6 +64,8 @@ func (e streamErr) Error() string {
 		return "failed to read size header"
 	case streamErrReadBody:
 		return "failed to read body"
+	case streamErrWrite:
+		return "failed to write data"
 	default:
 		return "unknown stream error"
 	}

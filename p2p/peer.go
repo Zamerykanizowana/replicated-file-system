@@ -72,9 +72,10 @@ func (t *Transactions) Put(message *protobuf.Message) (transaction *Transaction,
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if _, created = t.ts[message.Tid]; !created {
+	if _, alreadyCreated := t.ts[message.Tid]; !alreadyCreated {
+		created = true
 		t.ts[message.Tid] = &Transaction{}
-		t.ts[message.Tid].NotifyChan = make(chan *protobuf.Message)
+		t.ts[message.Tid].NotifyChan = make(chan *protobuf.Message, 2)
 	}
 
 	transaction = t.ts[message.Tid]
@@ -134,7 +135,7 @@ func (p *Peer) broadcast(msg *protobuf.Message) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal protobuf message")
 	}
-	if err = p.connPool.Broadcast(data); err != nil {
+	if err = p.connPool.Broadcast(context.Background(), data); err != nil {
 		return errors.Wrap(err, "failed to send the message to some of the peers")
 	}
 	return nil
@@ -154,7 +155,7 @@ func (p *Peer) handleTransaction(ch <-chan *protobuf.Message) {
 	for range p.peers {
 		msg := <-ch
 
-		log.Info().Interface("msg", msg).Msg("message received")
+		log.Info().Object("msg", msg).Msg("message received")
 
 		if request := msg.GetRequest(); request != nil {
 			response := protobuf.NewResponseMessage(msg.Tid, p.Name, protobuf.Response_ACK, nil)
