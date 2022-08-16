@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"time"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/pkg/errors"
@@ -12,7 +13,7 @@ import (
 )
 
 type (
-	recvFuncDef = func(ctx context.Context, ac uniStreamAcceptor) ([]byte, error)
+	recvFuncDef = func(ctx context.Context, ac uniStreamAcceptor, timeout time.Duration) ([]byte, error)
 	sendFuncDef = func(ctx context.Context, op uniStreamOpener, data []byte) error
 
 	uniStreamAcceptor interface {
@@ -27,7 +28,7 @@ type (
 // recv handles timeout and closes the quic.ReceiveStream with an appropriate quic.StreamErrorCode.
 // It blocks until the peer opens a new unidirectional QUIC stream.
 // It checks for the size header first before reading the data.
-func recv(ctx context.Context, ac uniStreamAcceptor) ([]byte, error) {
+func recv(ctx context.Context, ac uniStreamAcceptor, timeout time.Duration) ([]byte, error) {
 	stream, err := ac.AcceptUniStream(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to accept unidirectional QUIC stream")
@@ -44,6 +45,9 @@ func recv(ctx context.Context, ac uniStreamAcceptor) ([]byte, error) {
 			Msg("invalid header size, might be too long")
 		return nil, streamErrInvalidSizeHeader
 	}
+
+	ctx, cancel := contextWithOptionalTimeout(ctx, timeout)
+	defer cancel()
 
 	buf := make([]byte, size)
 	done := make(chan struct{})

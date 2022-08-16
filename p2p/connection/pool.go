@@ -127,14 +127,6 @@ func (p *Pool) Recv() ([]byte, error) {
 	return m.data, m.err
 }
 
-//
-//func (p *Pool) Close() error {
-//	p.listener.Close()
-//	for _, conn := range p.pool {
-//		conn.Close(ctx)
-//	}
-//}
-
 // listen starts accepting connections and runs Connection.Listen for all the
 // connections in a separate goroutine
 func (p *Pool) listen(ctx context.Context) {

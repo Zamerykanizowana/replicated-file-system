@@ -150,9 +150,7 @@ func (c *Connection) Recv(ctx context.Context) (data []byte, err error) {
 	if c.status == StatusDead {
 		return nil, connErrClosed
 	}
-	ctx, cancel := contextWithOptionalTimeout(ctx, c.netOpTimeout)
-	defer cancel()
-	data, err = recv(ctx, c.conn)
+	data, err = recv(ctx, c.conn, c.netOpTimeout)
 	if err = c.handleErrors(ctx, err); err != nil {
 		return nil, errors.Wrap(err, "failed to receive data")
 	}

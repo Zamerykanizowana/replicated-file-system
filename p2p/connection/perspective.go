@@ -72,7 +72,7 @@ func (p *perspectiveResolver) resolve(
 
 	rcv := make(chan message)
 	go func() {
-		data, err := p.recv(ctx, conn)
+		data, err := p.recv(ctx, conn, 0)
 		rcv <- message{data: data, err: err}
 	}()
 

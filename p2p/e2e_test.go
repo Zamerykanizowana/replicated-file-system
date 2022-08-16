@@ -47,7 +47,8 @@ func TestPeer(t *testing.T) {
 	}
 
 	Aragorn := &Peer{
-		Peer: *aragornsConf,
+		Peer:  *aragornsConf,
+		peers: []*config.Peer{gimlisConf},
 		transactions: Transactions{
 			ts: make(map[TransactionId]*Transaction, 1),
 			mu: new(sync.Mutex),
@@ -59,7 +60,8 @@ func TestPeer(t *testing.T) {
 			testTLSConf(t, "Aragorn")),
 	}
 	Gimli := &Peer{
-		Peer: *gimlisConf,
+		Peer:  *gimlisConf,
+		peers: []*config.Peer{aragornsConf},
 		transactions: Transactions{
 			ts: make(map[TransactionId]*Transaction, 1),
 			mu: new(sync.Mutex),
@@ -74,7 +76,7 @@ func TestPeer(t *testing.T) {
 	Aragorn.Run()
 	Gimli.Run()
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
