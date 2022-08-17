@@ -176,7 +176,7 @@ func (p *Peer) handleTransaction(transaction *Transaction) error {
 		log.Info().Object("msg", msg).Msg("message received")
 
 		if request := msg.GetRequest(); request != nil {
-			switch p.mirror.Consult() {
+			switch p.mirror.Consult(request) {
 			case true:
 				ourResponse = protobuf.Response_ACK
 			case false:
@@ -194,7 +194,7 @@ func (p *Peer) handleTransaction(transaction *Transaction) error {
 			return errors.New("operation was not permitted")
 		}
 	}
-	return p.mirror.Mirror(transaction.Request.Content)
+	return p.mirror.Mirror(transaction.Request)
 }
 
 func (p *Peer) listen() {

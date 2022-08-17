@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Zamerykanizowana/replicated-file-system/mirror"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 
 	"github.com/pkg/errors"
@@ -77,7 +78,7 @@ func run(conf *config.Config) error {
 		Str("local_path", conf.Paths.FuseDir).
 		Msg("Initializing FS")
 
-	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection)
+	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection, &mirror.Mirror{})
 	peer.Run()
 
 	server := rfs.NewRfsFuseServer(*conf, peer)

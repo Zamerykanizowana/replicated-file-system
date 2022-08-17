@@ -15,7 +15,8 @@ message Message {
 
 message Request {
   Type type = 1;
-  optional bytes content = 2;
+  Metadata metadata = 2;
+  optional bytes content = 3;
 
   enum Type {
     CREATE = 0;
@@ -27,6 +28,10 @@ message Request {
     SYMLINK = 6;
     UNLINK = 7;
     WRITE = 8;
+  }
+
+  message Metadata {
+    string relative_path = 1;
   }
 }
 
