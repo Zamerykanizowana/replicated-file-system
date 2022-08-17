@@ -34,22 +34,24 @@ func recv(ctx context.Context, ac uniStreamAcceptor, timeout time.Duration) ([]b
 		return nil, errors.Wrap(err, "failed to accept unidirectional QUIC stream")
 	}
 
+	var size int64
+	if err = binary.Read(stream, binary.BigEndian, &size); err != nil {
+		stream.CancelRead(quic.StreamErrorCode(streamErrReadHeader))
+		return nil, errors.Wrap(streamErrReadHeader, err.Error())
+	}
+	if size < 0 {
+		stream.CancelRead(quic.StreamErrorCode(streamErrInvalidSizeHeader))
+		return nil, streamErrInvalidSizeHeader
+	}
+
 	ctx, cancel := contextWithOptionalTimeout(ctx, timeout)
 	defer cancel()
 
-	var buf []byte
+	buf := make([]byte, size)
 	done := make(chan struct{})
 	errCh := make(chan error)
 
 	go func() {
-		var size int64
-		if err = binary.Read(stream, binary.BigEndian, &size); err != nil {
-			errCh <- errors.Wrap(streamErrReadHeader, err.Error())
-		}
-		if size < 0 {
-			errCh <- streamErrInvalidSizeHeader
-		}
-		buf = make([]byte, size)
 		if _, err = io.ReadFull(stream, buf); err != nil {
 			errCh <- errors.Wrap(streamErrReadBody, err.Error())
 			return

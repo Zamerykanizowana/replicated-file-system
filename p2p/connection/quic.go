@@ -20,7 +20,7 @@ func quicConfig(handshakeTimeout time.Duration) *quic.Config {
 		Versions:                       []quic.VersionNumber{quic.Version2},
 		ConnectionIDLength:             12,
 		HandshakeIdleTimeout:           handshakeTimeout,
-		MaxIdleTimeout:                 5 * time.Minute,
+		MaxIdleTimeout:                 1 * time.Minute,
 		InitialStreamReceiveWindow:     (1 << 10) * 512,       // 512 Kb
 		MaxStreamReceiveWindow:         (1 << 20) * 6,         // 6 Mb
 		InitialConnectionReceiveWindow: (1 << 10) * 512 * 1.5, // 768 Kb
