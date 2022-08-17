@@ -119,9 +119,13 @@ func (p *Peer) Run() {
 	go p.listen()
 }
 
-func (p *Peer) Replicate(requestType protobuf.Request_Type, content []byte) error {
+func (p *Peer) Replicate(
+	requestType protobuf.Request_Type,
+	metadata *protobuf.Request_Metadata,
+	content []byte,
+) error {
 	transactionId := uuid.New().String()
-	request, err := protobuf.NewRequestMessage(transactionId, p.Name, requestType, content)
+	request, err := protobuf.NewRequestMessage(transactionId, p.Name, requestType, metadata, content)
 	if err != nil {
 		return err
 	}

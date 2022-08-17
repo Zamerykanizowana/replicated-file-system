@@ -29,12 +29,13 @@ func (n *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 	out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
 	inode, fh, fflags, _ := n.LoopbackNode.Create(ctx, name, flags, mode, out)
 
-	log.Info().Msg(path.Join(n.Path(n.Root()), name))
 	var transactionError syscall.Errno
 
-	if err := n.peer.Replicate(protobuf.Request_CREATE, nil); err != nil {
+	filePath := path.Join(n.Path(n.Root()), name)
+	metadata := &protobuf.Request_Metadata{RelativePath: filePath}
+	if err := n.peer.Replicate(protobuf.Request_CREATE, metadata, nil); err != nil {
 		transactionError = syscall.EEXIST
-		log.Info().Msg("error for create: EEXIST: File exists")
+		log.Err(err).Msg("error for create: EEXIST: File exists")
 		return nil, nil, 0, transactionError
 	}
 

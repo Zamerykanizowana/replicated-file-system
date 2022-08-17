@@ -6,8 +6,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func NewRequestMessage(tid, peerName string, typ Request_Type, content []byte) (*Message, error) {
-	req, err := newRequest(typ, content)
+func NewRequestMessage(
+	tid, peerName string,
+	typ Request_Type,
+	metadata *Request_Metadata,
+	content []byte,
+) (*Message, error) {
+	req, err := newRequest(typ, metadata, content)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +40,7 @@ func newMessage(tid, peerName string, pm proto.Message) *Message {
 	}
 }
 
-func newRequest(typ Request_Type, content []byte) (*Request, error) {
+func newRequest(typ Request_Type, metadata *Request_Metadata, content []byte) (*Request, error) {
 	if content != nil {
 		var err error
 		content, err = compress(content)
@@ -44,8 +49,9 @@ func newRequest(typ Request_Type, content []byte) (*Request, error) {
 		}
 	}
 	return &Request{
-		Type:    typ,
-		Content: content,
+		Type:     typ,
+		Content:  content,
+		Metadata: metadata,
 	}, nil
 }
 
