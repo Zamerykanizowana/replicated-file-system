@@ -78,7 +78,9 @@ func run(conf *config.Config) error {
 		Str("local_path", conf.Paths.FuseDir).
 		Msg("Initializing FS")
 
-	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection, &mirror.Mirror{})
+	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection, &mirror.Mirror{
+		Conf: &conf.Paths,
+	})
 	peer.Run()
 
 	server := rfs.NewRfsFuseServer(*conf, peer)

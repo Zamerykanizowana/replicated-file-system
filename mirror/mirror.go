@@ -2,18 +2,22 @@ package mirror
 
 import (
 	"os"
+	"path"
 
 	"github.com/pkg/errors"
 
+	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
-type Mirror struct{}
+type Mirror struct {
+	Conf *config.Paths
+}
 
 func (m *Mirror) Mirror(request *protobuf.Request) error {
 	switch request.Type {
 	case protobuf.Request_CREATE:
-		_, err := os.Create(request.Metadata.RelativePath)
+		_, err := os.Create(m.path(request.Metadata.RelativePath))
 		return err
 	case protobuf.Request_LINK:
 	case protobuf.Request_MKDIR:
@@ -30,7 +34,7 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 func (m *Mirror) Consult(request *protobuf.Request) (accept bool) {
 	switch request.Type {
 	case protobuf.Request_CREATE:
-		if _, err := os.Stat(request.Metadata.RelativePath); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(m.path(request.Metadata.RelativePath)); errors.Is(err, os.ErrNotExist) {
 			return true
 		}
 		return false
@@ -44,4 +48,8 @@ func (m *Mirror) Consult(request *protobuf.Request) (accept bool) {
 	case protobuf.Request_WRITE:
 	}
 	return
+}
+
+func (m *Mirror) path(relPath string) string {
+	return path.Join(m.Conf.MirrorDir, relPath)
 }
