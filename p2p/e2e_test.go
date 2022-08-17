@@ -81,15 +81,17 @@ func TestPeer(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 
+	// TODO FIX THE TEST!
 	go func() {
 		defer wg.Done()
-		require.NoError(t, Aragorn.Replicate(protobuf.Request_CREATE, testHomer),
+		require.NoError(t, Aragorn.Replicate(protobuf.Request_CREATE, nil, testHomer),
 			"Aragorn failed to send message")
 	}()
 
+	// TODO FIX THE TEST!
 	go func() {
 		defer wg.Done()
-		require.NoError(t, Gimli.Replicate(protobuf.Request_CREATE, testShakespeare),
+		require.NoError(t, Gimli.Replicate(protobuf.Request_CREATE, nil, testShakespeare),
 			"Gimli failed to send message")
 	}()
 

@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
+	"github.com/Zamerykanizowana/replicated-file-system/mirror"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection/tlsconf"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
@@ -21,6 +22,7 @@ func NewPeer(
 	name string,
 	peersConfig []*config.Peer,
 	connConfig *config.Connection,
+	mirror *mirror.Mirror,
 ) *Peer {
 	var self config.Peer
 	peers := make([]*config.Peer, 0, len(peersConfig)-1)
@@ -44,7 +46,8 @@ func NewPeer(
 			ts: make(map[TransactionId]*Transaction, len(peersConfig)),
 			mu: new(sync.Mutex),
 		},
-		peers: peers,
+		peers:  peers,
+		mirror: mirror,
 	}
 }
 
@@ -55,6 +58,7 @@ type (
 		connPool     *connection.Pool
 		transactions Transactions
 		peers        []*config.Peer
+		mirror       *mirror.Mirror
 	}
 	Transactions struct {
 		ts map[TransactionId]*Transaction
@@ -67,6 +71,15 @@ type (
 		NotifyChan chan *protobuf.Message
 	}
 )
+
+func (t *Transactions) Has(tid string) (has bool) {
+	_, has = t.ts[tid]
+	return
+}
+
+func (t *Transactions) Get(tid string) *Transaction {
+	return t.ts[tid]
+}
 
 func (t *Transactions) Put(message *protobuf.Message) (transaction *Transaction, created bool) {
 	t.mu.Lock()
@@ -106,9 +119,13 @@ func (p *Peer) Run() {
 	go p.listen()
 }
 
-func (p *Peer) Replicate(requestType protobuf.Request_Type, content []byte) error {
+func (p *Peer) Replicate(
+	requestType protobuf.Request_Type,
+	metadata *protobuf.Request_Metadata,
+	content []byte,
+) error {
 	transactionId := uuid.New().String()
-	request, err := protobuf.NewRequestMessage(transactionId, p.Name, requestType, content)
+	request, err := protobuf.NewRequestMessage(transactionId, p.Name, requestType, metadata, content)
 	if err != nil {
 		return err
 	}
@@ -122,10 +139,14 @@ func (p *Peer) Replicate(requestType protobuf.Request_Type, content []byte) erro
 
 	for range p.peers {
 		msg := <-transaction.NotifyChan
-		response := msg.GetResponse()
-		log.Debug().Interface("response", response).Send()
+		log.Info().Object("msg", msg).Msg("message received")
 	}
 
+	for _, resp := range transaction.Responses {
+		if resp.Type != protobuf.Response_ACK {
+			return errors.New("operation was not permitted")
+		}
+	}
 	return nil
 }
 
@@ -151,19 +172,34 @@ func (p *Peer) receive() (*protobuf.Message, error) {
 	return protobuf.ReadMessage(data)
 }
 
-func (p *Peer) handleTransaction(ch <-chan *protobuf.Message) {
+func (p *Peer) handleTransaction(transaction *Transaction) error {
+	var ourResponse protobuf.Response_Type
 	for range p.peers {
-		msg := <-ch
+		msg := <-transaction.NotifyChan
 
 		log.Info().Object("msg", msg).Msg("message received")
 
 		if request := msg.GetRequest(); request != nil {
-			response := protobuf.NewResponseMessage(msg.Tid, p.Name, protobuf.Response_ACK, nil)
+			switch p.mirror.Consult(request) {
+			case true:
+				ourResponse = protobuf.Response_ACK
+			case false:
+				ourResponse = protobuf.Response_NACK
+			}
+			response := protobuf.NewResponseMessage(msg.Tid, p.Name, ourResponse, nil)
+			log.Info().Object("response", response).Msg("consulted response result")
 			if err := p.broadcast(response); err != nil {
 				log.Err(err).Interface("response", response).Msg("error occurred while broadcasting a response")
 			}
 		}
 	}
+
+	for _, resp := range transaction.Responses {
+		if resp.Type != protobuf.Response_ACK {
+			return errors.New("operation was not permitted")
+		}
+	}
+	return p.mirror.Mirror(transaction.Request)
 }
 
 func (p *Peer) listen() {
@@ -175,7 +211,10 @@ func (p *Peer) listen() {
 		}
 		transaction, created := p.transactions.Put(msg)
 		if created {
-			go p.handleTransaction(transaction.NotifyChan)
+			go func() {
+				// TODO log it.
+				_ = p.handleTransaction(transaction)
+			}()
 		}
 		transaction.NotifyChan <- msg
 	}
