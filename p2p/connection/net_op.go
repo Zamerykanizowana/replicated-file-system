@@ -34,35 +34,37 @@ func recv(ctx context.Context, ac uniStreamAcceptor, timeout time.Duration) ([]b
 		return nil, errors.Wrap(err, "failed to accept unidirectional QUIC stream")
 	}
 
-	var size int64
-	if err = binary.Read(stream, binary.BigEndian, &size); err != nil {
-		log.Ctx(ctx).Err(err).Msg("failed to read size header")
-		return nil, streamErrReadHeader
-	}
-	if size < 0 {
-		log.Ctx(ctx).Error().
-			Int64("size", size).
-			Msg("invalid header size, might be too long")
-		return nil, streamErrInvalidSizeHeader
-	}
-
 	ctx, cancel := contextWithOptionalTimeout(ctx, timeout)
 	defer cancel()
 
-	buf := make([]byte, size)
+	var buf []byte
 	done := make(chan struct{})
 	errCh := make(chan error)
 
 	go func() {
+		var size int64
+		if err = binary.Read(stream, binary.BigEndian, &size); err != nil {
+			errCh <- errors.Wrap(streamErrReadHeader, err.Error())
+		}
+		if size < 0 {
+			errCh <- streamErrInvalidSizeHeader
+		}
+		buf = make([]byte, size)
 		if _, err = io.ReadFull(stream, buf); err != nil {
-			log.Ctx(ctx).Err(err).Msg("failed to read body")
-			errCh <- streamErrReadBody
+			errCh <- errors.Wrap(streamErrReadBody, err.Error())
 			return
 		}
 		done <- struct{}{}
 	}()
 
-	return buf, selectResult(ctx, errCh, done)
+	if err = selectResult(ctx, errCh, done); err != nil {
+		if sErr, ok := errors.Cause(err).(streamErr); ok {
+			stream.CancelRead(quic.StreamErrorCode(sErr))
+		}
+		return nil, err
+	}
+
+	return buf, nil
 }
 
 // send handles timeout and closes the quic.SendStream with an appropriate quic.StreamErrorCode.
@@ -96,13 +98,20 @@ func send(ctx context.Context, op uniStreamOpener, data []byte) error {
 		buff := net.Buffers{lb, data}
 
 		if _, err = buff.WriteTo(stream); err != nil {
-			errCh <- errors.Wrap(err, "failed to send protobuf.Request")
+			errCh <- errors.Wrap(streamErrWrite, err.Error())
 			return
 		}
 		done <- struct{}{}
 	}()
 
-	return selectResult(ctx, errCh, done)
+	if err := selectResult(ctx, errCh, done); err != nil {
+		if sErr, ok := errors.Cause(err).(streamErr); ok {
+			stream.CancelWrite(quic.StreamErrorCode(sErr))
+		}
+		return err
+	}
+
+	return nil
 }
 
 // TODO handle stream errors here somehow.

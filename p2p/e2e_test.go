@@ -50,7 +50,7 @@ func TestPeer(t *testing.T) {
 		Peer:  *aragornsConf,
 		peers: []*config.Peer{gimlisConf},
 		transactions: Transactions{
-			ts: make(map[TransactionId]*Transaction, 1),
+			ts: make(map[TransactionId]*Transaction, 2),
 			mu: new(sync.Mutex),
 		},
 		connPool: connection.NewPool(
@@ -63,7 +63,7 @@ func TestPeer(t *testing.T) {
 		Peer:  *gimlisConf,
 		peers: []*config.Peer{aragornsConf},
 		transactions: Transactions{
-			ts: make(map[TransactionId]*Transaction, 1),
+			ts: make(map[TransactionId]*Transaction, 2),
 			mu: new(sync.Mutex),
 		},
 		connPool: connection.NewPool(

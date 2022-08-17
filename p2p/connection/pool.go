@@ -97,13 +97,11 @@ func (p *Pool) Run(ctx context.Context) {
 
 // Broadcast sends the data to all connections by calling Connection.Send in a separate goroutine
 // and waits for all of them to finish.
-func (p *Pool) Broadcast(data []byte) error {
+func (p *Pool) Broadcast(ctx context.Context, data []byte) error {
 	var (
 		mErr = &SendMultiErr{}
 		wg   sync.WaitGroup
 	)
-	// TODO add context to the Broadcast parameters.
-	ctx := context.Background()
 	wg.Add(len(p.pool))
 	for _, c := range p.pool {
 		go func(conn *Connection) {

@@ -46,6 +46,7 @@ const (
 	streamErrInvalidSizeHeader
 	streamErrReadHeader
 	streamErrReadBody
+	streamErrWrite
 )
 
 func (e streamErr) Error() string {
@@ -60,6 +61,8 @@ func (e streamErr) Error() string {
 		return "failed to read size header"
 	case streamErrReadBody:
 		return "failed to read body"
+	case streamErrWrite:
+		return "failed to write data"
 	default:
 		return "unknown stream error"
 	}

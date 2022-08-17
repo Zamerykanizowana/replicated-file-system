@@ -108,7 +108,6 @@ func (c *Connection) Establish(
 		return err
 	}
 
-	// TODO this mutex might prove to be useless now.
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -122,7 +121,7 @@ func (c *Connection) Establish(
 	c.status = StatusAlive
 	c.openNotify <- struct{}{}
 
-	log.Ctx(ctx).Info().Msg("connection established")
+	log.Ctx(ctx).Info().Stringer("perspective", perspective).Msg("connection established")
 	return nil
 }
 
