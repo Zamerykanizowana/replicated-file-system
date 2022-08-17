@@ -68,6 +68,15 @@ type (
 	}
 )
 
+func (t *Transactions) Has(tid string) (has bool) {
+	_, has = t.ts[tid]
+	return
+}
+
+func (t *Transactions) Get(tid string) *Transaction {
+	return t.ts[tid]
+}
+
 func (t *Transactions) Put(message *protobuf.Message) (transaction *Transaction, created bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -158,12 +167,14 @@ func (p *Peer) handleTransaction(ch <-chan *protobuf.Message) {
 		log.Info().Object("msg", msg).Msg("message received")
 
 		if request := msg.GetRequest(); request != nil {
+			// TODO check with mirror if we agree.
 			response := protobuf.NewResponseMessage(msg.Tid, p.Name, protobuf.Response_ACK, nil)
 			if err := p.broadcast(response); err != nil {
 				log.Err(err).Interface("response", response).Msg("error occurred while broadcasting a response")
 			}
 		}
 	}
+
 }
 
 func (p *Peer) listen() {
