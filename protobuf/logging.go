@@ -12,7 +12,9 @@ func (m *Message) MarshalZerologObject(e *zerolog.Event) {
 	}
 	if resp := m.GetResponse(); resp != nil {
 		e.Dict("response", zerolog.Dict().
-			Stringer("type", resp.Type).
-			Stringer("error", resp.Error))
+			Stringer("type", resp.Type))
+		if resp.Error != nil {
+			e.Stringer("error", resp.Error)
+		}
 	}
 }
