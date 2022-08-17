@@ -24,8 +24,8 @@
     }
   ],
   "paths": {
-    "fuse_dir": "~/other/rfs/virtual-gimli",
-    "mirror_dir": "~/other/rfs/contents-gimli"
+    "fuse_dir": "~/other/rfs/virtual",
+    "mirror_dir": "~/other/rfs/contents"
   },
   "logging": {
     "level": "info"
