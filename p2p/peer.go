@@ -75,7 +75,7 @@ func (t *Transactions) Put(message *protobuf.Message) (transaction *Transaction,
 	if _, alreadyCreated := t.ts[message.Tid]; !alreadyCreated {
 		created = true
 		t.ts[message.Tid] = &Transaction{}
-		t.ts[message.Tid].NotifyChan = make(chan *protobuf.Message, 2)
+		t.ts[message.Tid].NotifyChan = make(chan *protobuf.Message)
 	}
 
 	transaction = t.ts[message.Tid]

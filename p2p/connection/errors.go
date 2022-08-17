@@ -37,9 +37,6 @@ func (s *SendMultiErr) Empty() bool {
 	return len(s.errs) == 0
 }
 
-type streamCloserErr struct {
-}
-
 // streamErr represents common quic.Stream errors with a meaningful message.
 type streamErr quic.StreamErrorCode
 
