@@ -3,6 +3,8 @@ package mirror
 import (
 	"os"
 
+	"github.com/pkg/errors"
+
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
@@ -28,10 +30,10 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 func (m *Mirror) Consult(request *protobuf.Request) (accept bool) {
 	switch request.Type {
 	case protobuf.Request_CREATE:
-		if _, err := os.Stat(request.Metadata.RelativePath); err != nil {
-			return false
+		if _, err := os.Stat(request.Metadata.RelativePath); errors.Is(err, os.ErrNotExist) {
+			return true
 		}
-		return true
+		return false
 	case protobuf.Request_LINK:
 	case protobuf.Request_MKDIR:
 	case protobuf.Request_RENAME:

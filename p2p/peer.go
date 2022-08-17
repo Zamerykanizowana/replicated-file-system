@@ -187,6 +187,7 @@ func (p *Peer) handleTransaction(transaction *Transaction) error {
 				ourResponse = protobuf.Response_NACK
 			}
 			response := protobuf.NewResponseMessage(msg.Tid, p.Name, ourResponse, nil)
+			log.Info().Object("response", response).Msg("consulted response result")
 			if err := p.broadcast(response); err != nil {
 				log.Err(err).Interface("response", response).Msg("error occurred while broadcasting a response")
 			}
