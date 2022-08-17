@@ -35,6 +35,7 @@ func (n *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 	if err := n.peer.Replicate(protobuf.Request_CREATE, nil); err != nil {
 		transactionError = syscall.EEXIST
 		log.Info().Msg("error for create: EEXIST: File exists")
+		return nil, nil, 0, transactionError
 	}
 
 	return inode, fh, fflags, transactionError
