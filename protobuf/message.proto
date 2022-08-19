@@ -32,12 +32,14 @@ message Request {
 
   message Metadata {
     string relative_path = 1;
+    uint32 mode = 2;
   }
 }
 
 message Response {
   Type type = 1;
   optional Error error = 2;
+  optional string error_msg = 3;
 
   enum Type {
     ACK = 0;
@@ -45,6 +47,7 @@ message Response {
   }
 
   enum Error {
-    ERR_ALREADY_EXISTS = 0;
+    ERR_UNKNOWN = 0;
+    ERR_ALREADY_EXISTS = 1;
   }
 }

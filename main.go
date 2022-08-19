@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -58,7 +59,7 @@ func main() {
 			log.Debug().Object("config", conf).Msg("loaded config")
 			protobuf.SetCompression(conf.Connection.Compression)
 
-			return run(conf)
+			return run(context.Context, conf)
 		},
 	}
 
@@ -67,7 +68,7 @@ func main() {
 	}
 }
 
-func run(conf *config.Config) error {
+func run(ctx context.Context, conf *config.Config) error {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
@@ -81,7 +82,7 @@ func run(conf *config.Config) error {
 	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection, &mirror.Mirror{
 		Conf: &conf.Paths,
 	})
-	peer.Run()
+	peer.Run(ctx)
 
 	server := rfs.NewRfsFuseServer(*conf, peer)
 

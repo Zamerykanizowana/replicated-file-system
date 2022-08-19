@@ -25,26 +25,27 @@ func (r *rfsRoot) newRfsRoot(lr *fs.LoopbackRoot, p *fs.Inode, n string, st *sys
 		LoopbackNode: fs.LoopbackNode{RootData: lr}}
 }
 
-func (n *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode uint32,
+func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode uint32,
 	out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
-	inode, fh, fflags, _ := n.LoopbackNode.Create(ctx, name, flags, mode, out)
 
-	var transactionError syscall.Errno
-
-	filePath := path.Join(n.Path(n.Root()), name)
-	metadata := &protobuf.Request_Metadata{RelativePath: filePath}
-	if err := n.peer.Replicate(protobuf.Request_CREATE, metadata, nil); err != nil {
-		transactionError = syscall.EEXIST
+	req := &protobuf.Request{
+		Type: protobuf.Request_CREATE,
+		Metadata: &protobuf.Request_Metadata{
+			RelativePath: r.relativePath(name),
+			Mode:         mode,
+		},
+	}
+	if err := r.peer.Replicate(ctx, req); err != nil {
 		log.Err(err).Msg("error for create: EEXIST: File exists")
-		return nil, nil, 0, transactionError
+		return nil, nil, 0, syscall.EEXIST
 	}
 
-	return inode, fh, fflags, transactionError
+	return r.LoopbackNode.Create(ctx, name, flags, mode, out)
 }
 
 // Link is for hard link, not for symlink
-func (n *rfsRoot) Link(ctx context.Context, target fs.InodeEmbedder, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	inode, _ := n.LoopbackNode.Link(ctx, target, name, out)
+func (r *rfsRoot) Link(ctx context.Context, target fs.InodeEmbedder, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	inode, _ := r.LoopbackNode.Link(ctx, target, name, out)
 
 	fakeError := syscall.EXDEV
 
@@ -53,9 +54,9 @@ func (n *rfsRoot) Link(ctx context.Context, target fs.InodeEmbedder, name string
 	return inode, fakeError
 }
 
-func (n *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode,
+func (r *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode,
 	syscall.Errno) {
-	inode, _ := n.LoopbackNode.Mkdir(ctx, name, mode, out)
+	inode, _ := r.LoopbackNode.Mkdir(ctx, name, mode, out)
 
 	fakeError := syscall.EAGAIN
 
@@ -64,9 +65,9 @@ func (n *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse
 	return inode, fakeError
 }
 
-func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
+func (r *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	flags = flags &^ syscall.O_APPEND
-	p := filepath.Join(n.RootData.Path, n.Path(n.Root()))
+	p := filepath.Join(r.RootData.Path, r.Path(r.Root()))
 	f, err := syscall.Open(p, int(flags), 0)
 	if err != nil {
 		return nil, 0, fs.ToErrno(err)
@@ -78,9 +79,9 @@ func (n *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32
 	return lf, 0, 0
 }
 
-func (n *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string,
+func (r *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string,
 	flags uint32) syscall.Errno {
-	_ = n.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
+	_ = r.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
 
 	fakeError := syscall.EBADF
 
@@ -89,8 +90,8 @@ func (n *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmb
 	return fakeError
 }
 
-func (n *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
-	_ = n.LoopbackNode.Rmdir(ctx, name)
+func (r *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
+	_ = r.LoopbackNode.Rmdir(ctx, name)
 
 	fakeError := syscall.EISDIR
 
@@ -99,8 +100,8 @@ func (n *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
 	return fakeError
 }
 
-func (n *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
-	_ = n.LoopbackNode.Setattr(ctx, fh, in, out)
+func (r *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+	_ = r.LoopbackNode.Setattr(ctx, fh, in, out)
 
 	fakeError := syscall.ENOSYS
 
@@ -109,8 +110,8 @@ func (n *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAtt
 	return fakeError
 }
 
-func (n *rfsRoot) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	inode, _ := n.LoopbackNode.Symlink(ctx, target, name, out)
+func (r *rfsRoot) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	inode, _ := r.LoopbackNode.Symlink(ctx, target, name, out)
 
 	fakeError := syscall.ENFILE
 
@@ -119,8 +120,8 @@ func (n *rfsRoot) Symlink(ctx context.Context, target, name string, out *fuse.En
 	return inode, fakeError
 }
 
-func (n *rfsRoot) Unlink(ctx context.Context, name string) syscall.Errno {
-	_ = n.LoopbackNode.Unlink(ctx, name)
+func (r *rfsRoot) Unlink(ctx context.Context, name string) syscall.Errno {
+	_ = r.LoopbackNode.Unlink(ctx, name)
 
 	fakeError := syscall.ENOSPC
 
@@ -129,14 +130,18 @@ func (n *rfsRoot) Unlink(ctx context.Context, name string) syscall.Errno {
 	return fakeError
 }
 
-func (n *rfsRoot) CopyFileRange(ctx context.Context, fhIn fs.FileHandle,
+func (r *rfsRoot) CopyFileRange(ctx context.Context, fhIn fs.FileHandle,
 	offIn uint64, out *fs.Inode, fhOut fs.FileHandle, offOut uint64,
 	len uint64, flags uint64) (uint32, syscall.Errno) {
-	fflags, _ := n.LoopbackNode.CopyFileRange(ctx, fhIn, offIn, out, fhOut, offOut, len, flags)
+	fflags, _ := r.LoopbackNode.CopyFileRange(ctx, fhIn, offIn, out, fhOut, offOut, len, flags)
 
 	fakeError := syscall.ETXTBSY
 
 	log.Info().Msg("error for copyfilerange: ETXTBSY: ")
 
 	return fflags, fakeError
+}
+
+func (r *rfsRoot) relativePath(name string) string {
+	return path.Join(r.Path(r.Root()), name)
 }

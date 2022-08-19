@@ -12,17 +12,21 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
-	"github.com/Zamerykanizowana/replicated-file-system/mirror"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection/tlsconf"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
+type Mirror interface {
+	Mirror(request *protobuf.Request) error
+	Consult(request *protobuf.Request) *protobuf.Response
+}
+
 func NewPeer(
 	name string,
 	peersConfig []*config.Peer,
 	connConfig *config.Connection,
-	mirror *mirror.Mirror,
+	mirror Mirror,
 ) *Peer {
 	var self config.Peer
 	peers := make([]*config.Peer, 0, len(peersConfig)-1)
@@ -58,7 +62,7 @@ type (
 		connPool     *connection.Pool
 		transactions Transactions
 		peers        []*config.Peer
-		mirror       *mirror.Mirror
+		mirror       Mirror
 	}
 	Transactions struct {
 		ts map[TransactionId]*Transaction
@@ -66,20 +70,12 @@ type (
 	}
 	TransactionId = string
 	Transaction   struct {
+		Tid        string
 		Request    *protobuf.Request
 		Responses  []*protobuf.Response
 		NotifyChan chan *protobuf.Message
 	}
 )
-
-func (t *Transactions) Has(tid string) (has bool) {
-	_, has = t.ts[tid]
-	return
-}
-
-func (t *Transactions) Get(tid string) *Transaction {
-	return t.ts[tid]
-}
 
 func (t *Transactions) Put(message *protobuf.Message) (transaction *Transaction, created bool) {
 	t.mu.Lock()
@@ -87,7 +83,7 @@ func (t *Transactions) Put(message *protobuf.Message) (transaction *Transaction,
 
 	if _, alreadyCreated := t.ts[message.Tid]; !alreadyCreated {
 		created = true
-		t.ts[message.Tid] = &Transaction{}
+		t.ts[message.Tid] = &Transaction{Tid: message.Tid}
 		t.ts[message.Tid].NotifyChan = make(chan *protobuf.Message)
 	}
 
@@ -113,31 +109,32 @@ func (t *Transactions) Delete(tid TransactionId) {
 }
 
 // Run kicks of connection processes for the Peer.
-func (p *Peer) Run() {
+func (p *Peer) Run(ctx context.Context) {
 	log.Info().Object("peer", p).Msg("initializing p2p network connection")
-	p.connPool.Run(context.Background())
-	go p.listen()
+	p.connPool.Run(ctx)
+	go p.listen(ctx)
 }
 
-func (p *Peer) Replicate(
-	requestType protobuf.Request_Type,
-	metadata *protobuf.Request_Metadata,
-	content []byte,
-) error {
+func (p *Peer) Replicate(ctx context.Context, request *protobuf.Request) error {
 	transactionId := uuid.New().String()
-	request, err := protobuf.NewRequestMessage(transactionId, p.Name, requestType, metadata, content)
+	message, err := protobuf.NewRequestMessage(transactionId, p.Name, request)
 	if err != nil {
 		return err
 	}
 
-	transaction, _ := p.transactions.Put(request)
+	transaction, _ := p.transactions.Put(message)
 
-	if err = p.broadcast(request); err != nil {
-		p.transactions.Delete(request.Tid)
-		return err
+	expectedMessagesCount := len(p.peers)
+	if err = p.broadcast(ctx, message); err != nil {
+		if sendErr, ok := err.(*connection.SendMultiErr); ok && len(sendErr.Errors()) == len(p.peers) {
+			p.transactions.Delete(message.Tid)
+			return err
+		} else {
+			expectedMessagesCount = len(sendErr.Errors())
+		}
 	}
 
-	for range p.peers {
+	for i := 0; i < expectedMessagesCount; i++ {
 		msg := <-transaction.NotifyChan
 		log.Info().Object("msg", msg).Msg("message received")
 	}
@@ -151,13 +148,13 @@ func (p *Peer) Replicate(
 }
 
 // broadcast sends the protobuf.Message to all the other peers in the network.
-func (p *Peer) broadcast(msg *protobuf.Message) error {
+func (p *Peer) broadcast(ctx context.Context, msg *protobuf.Message) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal protobuf message")
 	}
-	if err = p.connPool.Broadcast(context.Background(), data); err != nil {
-		return errors.Wrap(err, "failed to send the message to some of the peers")
+	if err = p.connPool.Broadcast(ctx, data); err != nil {
+		return err
 	}
 	return nil
 }
@@ -172,7 +169,7 @@ func (p *Peer) receive() (*protobuf.Message, error) {
 	return protobuf.ReadMessage(data)
 }
 
-func (p *Peer) handleTransaction(transaction *Transaction) error {
+func (p *Peer) handleTransaction(ctx context.Context, transaction *Transaction) error {
 	var ourResponse protobuf.Response_Type
 	for range p.peers {
 		msg := <-transaction.NotifyChan
@@ -180,29 +177,29 @@ func (p *Peer) handleTransaction(transaction *Transaction) error {
 		log.Info().Object("msg", msg).Msg("message received")
 
 		if request := msg.GetRequest(); request != nil {
-			switch p.mirror.Consult(request) {
-			case true:
-				ourResponse = protobuf.Response_ACK
-			case false:
-				ourResponse = protobuf.Response_NACK
-			}
-			response := protobuf.NewResponseMessage(msg.Tid, p.Name, ourResponse, nil)
-			log.Info().Object("response", response).Msg("consulted response result")
-			if err := p.broadcast(response); err != nil {
-				log.Err(err).Interface("response", response).Msg("error occurred while broadcasting a response")
+			response := p.mirror.Consult(request)
+			message := protobuf.NewResponseMessage(msg.Tid, p.Name, response)
+			log.Info().Object("message", message).Msg("consulted response result")
+			if err := p.broadcast(ctx, message); err != nil {
+				log.Err(err).Object("message", message).Msg("error occurred while broadcasting a response")
 			}
 		}
 	}
 
+	permitted := ourResponse == protobuf.Response_ACK
 	for _, resp := range transaction.Responses {
 		if resp.Type != protobuf.Response_ACK {
-			return errors.New("operation was not permitted")
+			permitted = false
 		}
 	}
+	if !permitted {
+		return errors.New("operation was not permitted")
+	}
+
 	return p.mirror.Mirror(transaction.Request)
 }
 
-func (p *Peer) listen() {
+func (p *Peer) listen(ctx context.Context) {
 	for {
 		msg, err := p.receive()
 		if err != nil {
@@ -212,8 +209,10 @@ func (p *Peer) listen() {
 		transaction, created := p.transactions.Put(msg)
 		if created {
 			go func() {
-				// TODO log it.
-				_ = p.handleTransaction(transaction)
+				if err = p.handleTransaction(ctx, transaction); err != nil {
+					log.Err(err)
+				}
+				p.transactions.Delete(transaction.Tid)
 			}()
 		}
 		transaction.NotifyChan <- msg

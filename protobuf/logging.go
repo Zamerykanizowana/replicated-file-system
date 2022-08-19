@@ -16,5 +16,8 @@ func (m *Message) MarshalZerologObject(e *zerolog.Event) {
 		if resp.Error != nil {
 			e.Stringer("error", resp.Error)
 		}
+		if resp.ErrorMsg != nil {
+			e.Str("error_msg", *resp.ErrorMsg)
+		}
 	}
 }
