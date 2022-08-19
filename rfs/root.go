@@ -25,6 +25,8 @@ func (r *rfsRoot) newRfsRoot(lr *fs.LoopbackRoot, p *fs.Inode, n string, st *sys
 		LoopbackNode: fs.LoopbackNode{RootData: lr}}
 }
 
+const PermissionDenied = syscall.EPERM
+
 func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode uint32,
 	out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
 
@@ -36,8 +38,10 @@ func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 		},
 	}
 	if err := r.peer.Replicate(ctx, req); err != nil {
-		log.Err(err).Msg("error for create: EEXIST: File exists")
-		return nil, nil, 0, syscall.EEXIST
+		log.Err(err).
+			Object("request", req).
+			Msg("failed to create the file")
+		return nil, nil, 0, PermissionDenied
 	}
 
 	return r.LoopbackNode.Create(ctx, name, flags, mode, out)

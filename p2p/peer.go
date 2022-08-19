@@ -124,17 +124,17 @@ func (p *Peer) Replicate(ctx context.Context, request *protobuf.Request) error {
 
 	transaction, _ := p.transactions.Put(message)
 
-	expectedMessagesCount := len(p.peers)
+	sentMessagesCount := len(p.peers)
 	if err = p.broadcast(ctx, message); err != nil {
 		if sendErr, ok := err.(*connection.SendMultiErr); ok && len(sendErr.Errors()) == len(p.peers) {
 			p.transactions.Delete(message.Tid)
 			return err
 		} else {
-			expectedMessagesCount = len(sendErr.Errors())
+			sentMessagesCount = len(p.peers) - len(sendErr.Errors())
 		}
 	}
 
-	for i := 0; i < expectedMessagesCount; i++ {
+	for i := 0; i < sentMessagesCount; i++ {
 		msg := <-transaction.NotifyChan
 		log.Info().Object("msg", msg).Msg("message received")
 	}
@@ -178,6 +178,7 @@ func (p *Peer) handleTransaction(ctx context.Context, transaction *Transaction) 
 
 		if request := msg.GetRequest(); request != nil {
 			response := p.mirror.Consult(request)
+			ourResponse = response.Type
 			message := protobuf.NewResponseMessage(msg.Tid, p.Name, response)
 			log.Info().Object("message", message).Msg("consulted response result")
 			if err := p.broadcast(ctx, message); err != nil {
@@ -188,8 +189,9 @@ func (p *Peer) handleTransaction(ctx context.Context, transaction *Transaction) 
 
 	permitted := ourResponse == protobuf.Response_ACK
 	for _, resp := range transaction.Responses {
-		if resp.Type != protobuf.Response_ACK {
+		if resp.Type == protobuf.Response_NACK {
 			permitted = false
+			break
 		}
 	}
 	if !permitted {
