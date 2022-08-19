@@ -12,6 +12,10 @@ type SendMultiErr struct {
 	mu   sync.Mutex
 }
 
+func (s *SendMultiErr) Errors() map[peerName]error {
+	return s.errs
+}
+
 func (s *SendMultiErr) Error() string {
 	b := strings.Builder{}
 	b.WriteString("sending errors: ")

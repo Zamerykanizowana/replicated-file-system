@@ -6,15 +6,24 @@ func (m *Message) MarshalZerologObject(e *zerolog.Event) {
 	e.Str("tid", m.Tid).
 		Str("peer_name", m.PeerName)
 	if req := m.GetRequest(); req != nil {
-		e.Dict("request", zerolog.Dict().
-			Stringer("type", req.Type).
-			Int("content_size", len(req.Content)))
+		e.Object("request", req)
 	}
 	if resp := m.GetResponse(); resp != nil {
-		e.Dict("response", zerolog.Dict().
-			Stringer("type", resp.Type))
-		if resp.Error != nil {
-			e.Stringer("error", resp.Error)
-		}
+		e.Object("response", resp)
+	}
+}
+
+func (r *Request) MarshalZerologObject(e *zerolog.Event) {
+	e.Stringer("type", r.Type).
+		Int("content_size", len(r.Content))
+}
+
+func (r *Response) MarshalZerologObject(e *zerolog.Event) {
+	e.Stringer("type", r.Type)
+	if r.Error != nil {
+		e.Stringer("error", r.Error)
+	}
+	if r.ErrorMsg != nil {
+		e.Str("error_msg", *r.ErrorMsg)
 	}
 }

@@ -8,19 +8,29 @@ import (
 
 func NewRequestMessage(
 	tid, peerName string,
-	typ Request_Type,
-	metadata *Request_Metadata,
-	content []byte,
+	request *Request,
 ) (*Message, error) {
-	req, err := newRequest(typ, metadata, content)
-	if err != nil {
-		return nil, err
+	if request.Content != nil {
+		var err error
+		request.Content, err = compress(request.Content)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to compress Request.Content")
+		}
 	}
-	return newMessage(tid, peerName, req), nil
+	return newMessage(tid, peerName, request), nil
 }
 
-func NewResponseMessage(tid, peerName string, typ Response_Type, respErr *Response_Error) *Message {
-	return newMessage(tid, peerName, newResponse(typ, respErr))
+func ACK() *Response {
+	return &Response{Type: Response_ACK}
+}
+
+func NACK(respErr Response_Error, err error) *Response {
+	errMsg := err.Error()
+	return &Response{Type: Response_NACK, Error: &respErr, ErrorMsg: &errMsg}
+}
+
+func NewResponseMessage(tid, peerName string, response *Response) *Message {
+	return newMessage(tid, peerName, response)
 }
 
 func newMessage(tid, peerName string, pm proto.Message) *Message {
@@ -37,28 +47,6 @@ func newMessage(tid, peerName string, pm proto.Message) *Message {
 		Tid:      tid,
 		PeerName: peerName,
 		Type:     imt,
-	}
-}
-
-func newRequest(typ Request_Type, metadata *Request_Metadata, content []byte) (*Request, error) {
-	if content != nil {
-		var err error
-		content, err = compress(content)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to compress Request.Content")
-		}
-	}
-	return &Request{
-		Type:     typ,
-		Content:  content,
-		Metadata: metadata,
-	}, nil
-}
-
-func newResponse(typ Response_Type, respErr *Response_Error) *Response {
-	return &Response{
-		Type:  typ,
-		Error: respErr,
 	}
 }
 

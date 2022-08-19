@@ -4,6 +4,7 @@
 package p2p
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"embed"
@@ -17,7 +18,6 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection"
-	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection/tlsconf"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
@@ -53,6 +53,7 @@ func TestPeer(t *testing.T) {
 			ts: make(map[TransactionId]*Transaction, 2),
 			mu: new(sync.Mutex),
 		},
+		mirror: mirrorMock{},
 		connPool: connection.NewPool(
 			aragornsConf,
 			[]*config.Peer{gimlisConf},
@@ -66,6 +67,7 @@ func TestPeer(t *testing.T) {
 			ts: make(map[TransactionId]*Transaction, 2),
 			mu: new(sync.Mutex),
 		},
+		mirror: mirrorMock{},
 		connPool: connection.NewPool(
 			gimlisConf,
 			[]*config.Peer{aragornsConf},
@@ -73,8 +75,9 @@ func TestPeer(t *testing.T) {
 			testTLSConf(t, "Gimli")),
 	}
 
-	Aragorn.Run()
-	Gimli.Run()
+	ctx := context.Background()
+	Aragorn.Run(ctx)
+	Gimli.Run(ctx)
 
 	time.Sleep(1 * time.Second)
 
@@ -84,14 +87,22 @@ func TestPeer(t *testing.T) {
 	// TODO FIX THE TEST!
 	go func() {
 		defer wg.Done()
-		require.NoError(t, Aragorn.Replicate(protobuf.Request_CREATE, nil, testHomer),
+		require.NoError(t, Aragorn.Replicate(ctx, &protobuf.Request{
+			Type:     protobuf.Request_CREATE,
+			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere/else", Mode: 0666},
+			Content:  testHomer,
+		}),
 			"Aragorn failed to send message")
 	}()
 
 	// TODO FIX THE TEST!
 	go func() {
 		defer wg.Done()
-		require.NoError(t, Gimli.Replicate(protobuf.Request_CREATE, nil, testShakespeare),
+		require.NoError(t, Gimli.Replicate(ctx, &protobuf.Request{
+			Type:     protobuf.Request_CREATE,
+			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere", Mode: 0666},
+			Content:  testShakespeare,
+		}),
 			"Gimli failed to send message")
 	}()
 
@@ -117,10 +128,23 @@ func testTLSConf(t *testing.T, peer string) *tls.Config {
 	appended := pool.AppendCertsFromPEM(mustOpen("ca.crt"))
 	require.True(t, appended)
 
-	tc := tlsconf.Default(tls.VersionTLS13)
-	tc.RootCAs = pool
-	tc.ClientCAs = pool
-	tc.Certificates = []tls.Certificate{cert}
+	return &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		RootCAs:            pool,
+		ClientCAs:          pool,
+		ClientAuth:         tls.RequireAndVerifyClientCert,
+		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS13,
+		MaxVersion:         tls.VersionTLS13,
+	}
+}
 
-	return tc
+type mirrorMock struct{}
+
+func (m mirrorMock) Mirror(_ *protobuf.Request) error {
+	return nil
+}
+
+func (m mirrorMock) Consult(_ *protobuf.Request) *protobuf.Response {
+	return protobuf.ACK()
 }
