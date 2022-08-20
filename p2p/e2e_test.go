@@ -37,9 +37,12 @@ const (
 	GimlisName   = "Gimli"
 )
 
-func TestPeer_ReplicateSingleOperation(t *testing.T) {
+func TestMain(m *testing.M) {
 	logging.Configure(&config.Logging{Level: "debug"})
+	m.Run()
+}
 
+func TestPeer_ReplicateSingleOperation(t *testing.T) {
 	Aragorn := peerStructForName(t, AragornsName, config.MustUnmarshalConfig(aragornsConf))
 	Gimli := peerStructForName(t, GimlisName, config.MustUnmarshalConfig(gimlisConf))
 
@@ -76,8 +79,6 @@ func TestPeer_ReplicateSingleOperation(t *testing.T) {
 }
 
 func TestPeer_Reconnection(t *testing.T) {
-	logging.Configure(&config.Logging{Level: "debug"})
-
 	Aragorn := peerStructForName(t, AragornsName, config.MustUnmarshalConfig(aragornsConf))
 	Gimli := peerStructForName(t, GimlisName, config.MustUnmarshalConfig(gimlisConf))
 
@@ -121,9 +122,9 @@ func TestPeer_Reconnection(t *testing.T) {
 	wg.Wait()
 }
 
-func peerStructForName(t *testing.T, name string, conf *config.Config) *Peer {
+func peerStructForName(t *testing.T, name string, conf *config.Config) *Host {
 	peer, peers := conf.Peers.Pop(name)
-	return &Peer{
+	return &Host{
 		Peer:  *peer,
 		peers: peers,
 		transactions: Transactions{

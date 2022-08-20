@@ -16,7 +16,7 @@ import (
 
 type rfsRoot struct {
 	fs.LoopbackNode
-	peer *p2p.Peer
+	peer *p2p.Host
 }
 
 func (r *rfsRoot) newRfsRoot(lr *fs.LoopbackRoot, p *fs.Inode, n string, st *syscall.Stat_t) fs.InodeEmbedder {
