@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -69,40 +69,51 @@ func main() {
 }
 
 func run(ctx context.Context, conf *config.Config) error {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	sig := newSignalHandler()
 
 	log.Info().
 		Str("commit", commit).
 		Str("branch", branch).
-		Str("peer", flagValues.Name).
+		Str("host", flagValues.Name).
 		Str("local_path", conf.Paths.FuseDir).
 		Msg("Initializing FS")
 
-	peer := p2p.NewPeer(flagValues.Name, conf.Peers, &conf.Connection, &mirror.Mirror{
+	host := p2p.NewHost(flagValues.Name, conf.Peers, &conf.Connection, &mirror.Mirror{
 		Conf: &conf.Paths,
 	})
-	peer.Run(ctx)
+	host.Run(ctx)
 
-	server := rfs.NewRfsFuseServer(*conf, peer)
+	server := rfs.NewServer(*conf, host)
 
 	if err := server.Mount(); err != nil {
 		return errors.Wrap(err, "unable to mount fuse filesystem")
 	}
 
-	// Unmount filesystem upon receiving signal.
-	go func() {
-		sig := <-sigs
-		log.Info().Str("signal", fmt.Sprint(sig)).Msg("Signal received!")
-		peer.Close()
-		err := server.Server.Unmount()
-		if err != nil {
-			log.Err(err).Msg("unsuccessful unmount")
-		}
-	}()
+	// Unmount filesystem and close connections upon receiving signal.
+	go sig.closeOnSignal(host, server)
 
 	server.Wait()
 	return nil
+}
+
+func newSignalHandler() *signalHandler {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	return &signalHandler{sigs: sigs}
+}
+
+type signalHandler struct {
+	sigs chan os.Signal
+}
+
+func (s signalHandler) closeOnSignal(closers ...io.Closer) {
+	sig := <-s.sigs
+	log.Info().Stringer("signal", sig).Msg("Signal received!")
+	for _, c := range closers {
+		if err := c.Close(); err != nil {
+			log.Err(err).Send()
+		}
+	}
 }
 
 func mustReadConfig() *config.Config {
