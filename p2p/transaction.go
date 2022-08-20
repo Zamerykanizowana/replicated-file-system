@@ -8,46 +8,63 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
+type transactionInitiator uint8
+
+const (
+	hostInitiator transactionInitiator = iota
+	peerInitiator
+)
+
 type (
-	Transactions struct {
-		ts map[TransactionId]*Transaction
-		mu *sync.Mutex
+	transactions struct {
+		hostName string
+		ts       map[transactionId]*transaction
+		mu       *sync.Mutex
 	}
-	TransactionId = string
-	Transaction   struct {
+	transactionId = string
+	transaction   struct {
 		Tid        string
+		Initiator  transactionInitiator
 		Request    *protobuf.Request
 		Responses  []*protobuf.Response
 		NotifyChan chan *protobuf.Message
 	}
 )
 
-func (t *Transactions) Put(message *protobuf.Message) (transaction *Transaction, created bool) {
+func newTransactions(hostName string) *transactions {
+	return &transactions{
+		hostName: hostName,
+		ts:       make(map[transactionId]*transaction, 100),
+		mu:       new(sync.Mutex),
+	}
+}
+
+func (t *transactions) Put(message *protobuf.Message) (trans *transaction, created bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	if _, alreadyCreated := t.ts[message.Tid]; !alreadyCreated {
 		created = true
-		t.ts[message.Tid] = &Transaction{Tid: message.Tid}
+		t.ts[message.Tid] = &transaction{Tid: message.Tid}
 		t.ts[message.Tid].NotifyChan = make(chan *protobuf.Message)
 	}
 
-	transaction = t.ts[message.Tid]
+	trans = t.ts[message.Tid]
 
 	switch v := message.Type.(type) {
 	case *protobuf.Message_Request:
-		if transaction.Request != nil {
+		if trans.Request != nil {
 			log.Error().Interface("msg", message).Msg("Request has already been set in transaction")
 		}
-		transaction.Request = v.Request
+		trans.Request = v.Request
 	case *protobuf.Message_Response:
-		transaction.Responses = append(transaction.Responses, v.Response)
+		trans.Responses = append(trans.Responses, v.Response)
 	}
 
 	return
 }
 
-func (t *Transactions) Delete(tid TransactionId) {
+func (t *transactions) Delete(tid transactionId) {
 	t.mu.Lock()
 	delete(t.ts, tid)
 	t.mu.Unlock()

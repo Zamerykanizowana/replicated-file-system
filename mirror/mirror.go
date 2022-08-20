@@ -2,7 +2,7 @@ package mirror
 
 import (
 	"os"
-	"path"
+	"path/filepath"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -11,8 +11,12 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
+func NewMirror(conf *config.Paths) *Mirror {
+	return &Mirror{conf: conf}
+}
+
 type Mirror struct {
-	Conf *config.Paths
+	conf *config.Paths
 }
 
 func (m *Mirror) Mirror(request *protobuf.Request) error {
@@ -63,5 +67,5 @@ func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 }
 
 func (m *Mirror) path(relPath string) string {
-	return path.Join(m.Conf.MirrorDir, relPath)
+	return filepath.Join(m.conf.MirrorDir, relPath)
 }

@@ -78,9 +78,8 @@ func run(ctx context.Context, conf *config.Config) error {
 		Str("local_path", conf.Paths.FuseDir).
 		Msg("Initializing FS")
 
-	host := p2p.NewHost(flagValues.Name, conf.Peers, &conf.Connection, &mirror.Mirror{
-		Conf: &conf.Paths,
-	})
+	mir := mirror.NewMirror(&conf.Paths)
+	host := p2p.NewHost(flagValues.Name, conf.Peers, &conf.Connection, mir)
 	host.Run(ctx)
 
 	server := rfs.NewServer(*conf, host)

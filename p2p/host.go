@@ -3,7 +3,6 @@ package p2p
 import (
 	"context"
 	_ "embed"
-	"sync"
 
 	"github.com/google/uuid"
 
@@ -36,14 +35,11 @@ func NewHost(
 			Msg("invalid peer name provided, peer must be listed in the peers config")
 	}
 	return &Host{
-		Peer:     *host,
-		connPool: connection.NewPool(host, peers, connConfig, tlsconf.Default(connConfig.GetTLSVersion())),
-		transactions: Transactions{
-			ts: make(map[TransactionId]*Transaction, len(peersConfig)),
-			mu: new(sync.Mutex),
-		},
-		peers:  peers,
-		mirror: mirror,
+		Peer:         *host,
+		connPool:     connection.NewPool(host, peers, connConfig, tlsconf.Default(connConfig.GetTLSVersion())),
+		transactions: newTransactions(host.Name),
+		peers:        peers,
+		mirror:       mirror,
 	}
 }
 
@@ -51,7 +47,7 @@ func NewHost(
 type Host struct {
 	config.Peer
 	connPool     *connection.Pool
-	transactions Transactions
+	transactions *transactions
 	peers        []*config.Peer
 	mirror       Mirror
 }
@@ -70,13 +66,13 @@ func (h *Host) Close() error {
 }
 
 func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
-	transactionId := uuid.New().String()
-	message, err := protobuf.NewRequestMessage(transactionId, h.Name, request)
+	tid := uuid.New().String()
+	message, err := protobuf.NewRequestMessage(tid, h.Name, request)
 	if err != nil {
 		return err
 	}
 
-	transaction, _ := h.transactions.Put(message)
+	trans, _ := h.transactions.Put(message)
 
 	sentMessagesCount := len(h.peers)
 	if err = h.broadcast(ctx, message); err != nil {
@@ -89,11 +85,11 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 	}
 
 	for i := 0; i < sentMessagesCount; i++ {
-		msg := <-transaction.NotifyChan
+		msg := <-trans.NotifyChan
 		log.Info().Object("msg", msg).Msg("message received")
 	}
 
-	for _, resp := range transaction.Responses {
+	for _, resp := range trans.Responses {
 		if resp.Type != protobuf.Response_ACK {
 			return errors.New("operation was not permitted")
 		}
@@ -123,7 +119,7 @@ func (h *Host) receive() (*protobuf.Message, error) {
 	return protobuf.ReadMessage(data)
 }
 
-func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) error {
+func (h *Host) handleTransaction(ctx context.Context, transaction *transaction) error {
 	var ourResponse protobuf.Response_Type
 	for range h.peers {
 		msg := <-transaction.NotifyChan
@@ -162,15 +158,15 @@ func (h *Host) listen(ctx context.Context) {
 			log.Err(err).Msg("Error while collecting a message")
 			continue
 		}
-		transaction, created := h.transactions.Put(msg)
+		trans, created := h.transactions.Put(msg)
 		if created {
 			go func() {
-				if err = h.handleTransaction(ctx, transaction); err != nil {
+				if err = h.handleTransaction(ctx, trans); err != nil {
 					log.Err(err)
 				}
-				h.transactions.Delete(transaction.Tid)
+				h.transactions.Delete(trans.Tid)
 			}()
 		}
-		transaction.NotifyChan <- msg
+		trans.NotifyChan <- msg
 	}
 }
