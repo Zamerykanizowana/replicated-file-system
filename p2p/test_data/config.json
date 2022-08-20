@@ -19,13 +19,17 @@
       "name": "Aragorn"
     },
     {
-      "address": "localhost:9005",
+      "address": "localhost:9002",
       "name": "Gimli"
+    },
+    {
+      "address": "localhost:9003",
+      "name": "Legolas"
     }
   ],
   "paths": {
-    "fuse_dir": "~/other/rfs/virtual-aragorn",
-    "mirror_dir": "~/other/rfs/contents-aragorn"
+    "fuse_dir": "~/other/rfs/virtual",
+    "mirror_dir": "~/other/rfs/contents"
   },
   "logging": {
     "level": "debug"
