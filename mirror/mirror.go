@@ -42,16 +42,12 @@ func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 	switch request.Type {
 	case protobuf.Request_CREATE:
 		if _, err := os.Stat(m.path(request.Metadata.RelativePath)); err != nil {
-			var errno protobuf.Response_Error
-			switch {
-			case errors.Is(err, os.ErrNotExist):
-				errno = protobuf.Response_ERR_ALREADY_EXISTS
-			default:
-				errno = protobuf.Response_ERR_UNKNOWN
+			if errors.Is(err, os.ErrNotExist) {
+				return protobuf.ACK()
 			}
-			return protobuf.NACK(errno, err)
+			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
 		}
-		return protobuf.ACK()
+		return protobuf.NACK(protobuf.Response_ERR_ALREADY_EXISTS, errors.New("file already exists"))
 	case protobuf.Request_LINK:
 	case protobuf.Request_MKDIR:
 	case protobuf.Request_RENAME:
