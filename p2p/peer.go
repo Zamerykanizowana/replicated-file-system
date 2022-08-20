@@ -115,6 +115,11 @@ func (p *Peer) Run(ctx context.Context) {
 	go p.listen(ctx)
 }
 
+// Close closes the underlying connection.Pool.
+func (p *Peer) Close() {
+	p.connPool.Close()
+}
+
 func (p *Peer) Replicate(ctx context.Context, request *protobuf.Request) error {
 	transactionId := uuid.New().String()
 	message, err := protobuf.NewRequestMessage(transactionId, p.Name, request)

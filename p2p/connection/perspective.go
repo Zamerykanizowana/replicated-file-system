@@ -110,7 +110,7 @@ type perspectiveResolvent struct {
 	ctr uint32 // 1 or 2
 }
 
-func (p perspectiveResolvent) Encode() (b []byte) {
+func (p *perspectiveResolvent) Encode() (b []byte) {
 	return []byte{byte(p.Perspective), byte(p.ctr)}
 }
 

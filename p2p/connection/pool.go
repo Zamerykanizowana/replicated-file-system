@@ -48,7 +48,7 @@ func NewPool(
 	var err error
 	p.listener, err = quic.ListenAddr(host.Address, tlsConf, quicConf)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create TLS listener")
+		log.Fatal().Err(err).Object("host", host).Msg("failed to create TLS listener")
 	}
 	p.dialFunc = quic.DialAddrContext
 
@@ -90,9 +90,16 @@ type (
 // Run has to be called once per Pool.
 // There's no need to run it in a separate routine.
 func (p *Pool) Run(ctx context.Context) {
-	ctx = log.With().EmbedObject(p.host).Logger().WithContext(ctx)
 	go p.listen(ctx)
 	go p.dialAll(ctx)
+}
+
+// Close attempts to gracefully close all connections in a blocking manner.
+func (p *Pool) Close() {
+	log.Info().Object("host", p.host).Msg("Closing all network connections")
+	for _, conn := range p.pool {
+		closeConn(conn.conn, connErrClosed)
+	}
 }
 
 // Broadcast sends the data to all connections by calling Connection.Send in a separate goroutine
@@ -141,14 +148,14 @@ func (p *Pool) acceptConnections(ctx context.Context) {
 	for {
 		conn, err := p.listener.Accept(ctx)
 		if err != nil {
-			log.Err(err).Msg("failed to accept incoming connection")
+			log.Err(err).Object("host", p.host).Msg("failed to accept incoming connection")
 			continue
 		}
 		go func() {
 			ctx, cancel := contextWithOptionalTimeout(ctx, p.handshakeTimeout)
 			defer cancel()
 			if err = p.add(ctx, Server, conn); err != nil {
-				log.Debug().Err(err).Send()
+				log.Debug().Err(err).Object("host", p.host).Send()
 			}
 		}()
 	}
@@ -168,11 +175,27 @@ func (p *Pool) dialAll(ctx context.Context) {
 // until successful or until the Connection changes state to StatusAlive.
 func (p *Pool) dial(ctx context.Context, c *Connection) {
 	backoff := NewBackoff(p.dialBackoffConfig)
+	statusCheckTicker := time.NewTicker(5 * time.Second)
 	var err error
 	for {
+		// The reason we can't use channel based waking here is because If we
+		// disconnect and reconnect the peer before dialOnce returns and starts
+		// blocking here we'll hold the lock in Connection.Close() which is the same lock
+		// used in Connection.Establish().
+		if c.status == StatusAlive {
+			for {
+				<-statusCheckTicker.C
+				if c.status == StatusDead {
+					break
+				}
+			}
+		}
 		if err = p.dialOnce(c); err != nil {
 			backoff.Next()
-			log.Ctx(ctx).Debug().EmbedObject(backoff).Err(err).Msg("failed to dial connection")
+			log.Ctx(ctx).Debug().Err(err).
+				Object("host", p.host).
+				EmbedObject(backoff).
+				Msg("failed to dial connection")
 			continue
 		}
 		backoff.Reset()
@@ -183,9 +206,6 @@ func (p *Pool) dial(ctx context.Context, c *Connection) {
 // It blocks when the connection was already established and
 // waits for it to be closed to make its attempt.
 func (p *Pool) dialOnce(c *Connection) error {
-	if c.status == StatusAlive {
-		c.WaitForClosed()
-	}
 	ctx, cancel := contextWithOptionalTimeout(context.Background(), p.handshakeTimeout)
 	defer cancel()
 	conn, err := p.dialFunc(ctx, c.peer.Address, p.tlsConfig, p.quicConf)

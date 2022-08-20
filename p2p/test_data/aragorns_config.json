@@ -8,8 +8,8 @@
       "factor": 1.3,
       "max_factor_jitter": 0.2
     },
-    "send_recv_timeout": 6000000000,
-    "handshake_timeout": 3000000000,
+    "send_recv_timeout": 60000000000,
+    "handshake_timeout": 5000000000,
     "network": "tcp",
     "compression": "DefaultCompression"
   },
@@ -24,10 +24,10 @@
     }
   ],
   "paths": {
-    "fuse_dir": "~/other/rfs/virtual",
-    "mirror_dir": "~/other/rfs/contents"
+    "fuse_dir": "~/other/rfs/virtual-aragorn",
+    "mirror_dir": "~/other/rfs/contents-aragorn"
   },
   "logging": {
-    "level": "info"
+    "level": "debug"
   }
 }

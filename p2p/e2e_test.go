@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 package p2p
 
@@ -27,53 +26,22 @@ var testShakespeare []byte
 //go:embed test_data/homer.txt
 var testHomer []byte
 
-//go:embed test_data/config.json
-var testConf []byte
+//go:embed test_data/gimlis_config.json
+var gimlisConf []byte
 
-func TestPeer(t *testing.T) {
+//go:embed test_data/aragorns_config.json
+var aragornsConf []byte
+
+const (
+	AragornsName = "Aragorn"
+	GimlisName   = "Gimli"
+)
+
+func TestPeer_ReplicateSingleOperation(t *testing.T) {
 	logging.Configure(&config.Logging{Level: "debug"})
-	conf := config.MustUnmarshalConfig(testConf)
-	var (
-		aragornsConf *config.Peer
-		gimlisConf   *config.Peer
-	)
-	for _, p := range conf.Peers {
-		switch p.Name {
-		case "Aragorn":
-			aragornsConf = p
-		case "Gimli":
-			gimlisConf = p
-		}
-	}
 
-	Aragorn := &Peer{
-		Peer:  *aragornsConf,
-		peers: []*config.Peer{gimlisConf},
-		transactions: Transactions{
-			ts: make(map[TransactionId]*Transaction, 2),
-			mu: new(sync.Mutex),
-		},
-		mirror: mirrorMock{},
-		connPool: connection.NewPool(
-			aragornsConf,
-			[]*config.Peer{gimlisConf},
-			&conf.Connection,
-			testTLSConf(t, "Aragorn")),
-	}
-	Gimli := &Peer{
-		Peer:  *gimlisConf,
-		peers: []*config.Peer{aragornsConf},
-		transactions: Transactions{
-			ts: make(map[TransactionId]*Transaction, 2),
-			mu: new(sync.Mutex),
-		},
-		mirror: mirrorMock{},
-		connPool: connection.NewPool(
-			gimlisConf,
-			[]*config.Peer{aragornsConf},
-			&conf.Connection,
-			testTLSConf(t, "Gimli")),
-	}
+	Aragorn := peerStructForName(t, AragornsName, config.MustUnmarshalConfig(aragornsConf))
+	Gimli := peerStructForName(t, GimlisName, config.MustUnmarshalConfig(gimlisConf))
 
 	ctx := context.Background()
 	Aragorn.Run(ctx)
@@ -84,7 +52,6 @@ func TestPeer(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 
-	// TODO FIX THE TEST!
 	go func() {
 		defer wg.Done()
 		require.NoError(t, Aragorn.Replicate(ctx, &protobuf.Request{
@@ -95,7 +62,6 @@ func TestPeer(t *testing.T) {
 			"Aragorn failed to send message")
 	}()
 
-	// TODO FIX THE TEST!
 	go func() {
 		defer wg.Done()
 		require.NoError(t, Gimli.Replicate(ctx, &protobuf.Request{
@@ -107,6 +73,70 @@ func TestPeer(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+func TestPeer_Reconnection(t *testing.T) {
+	logging.Configure(&config.Logging{Level: "debug"})
+
+	Aragorn := peerStructForName(t, AragornsName, config.MustUnmarshalConfig(aragornsConf))
+	Gimli := peerStructForName(t, GimlisName, config.MustUnmarshalConfig(gimlisConf))
+
+	ctx := context.Background()
+	Gimli.Run(ctx)
+	Aragorn.Run(ctx)
+
+	time.Sleep(time.Second)
+
+	wg := sync.WaitGroup{}
+	send := func() {
+		defer wg.Done()
+		require.NoError(t, Aragorn.Replicate(ctx, &protobuf.Request{
+			Type:     protobuf.Request_CREATE,
+			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere/else", Mode: 0666},
+			Content:  testHomer,
+		}),
+			"Aragorn failed to send message")
+	}
+
+	wg.Add(1)
+	send()
+	wg.Wait()
+
+	Aragorn.Close()
+
+	for i := 0; i < 10; i++ {
+		Aragorn.Run(ctx)
+
+		time.Sleep(50 * time.Millisecond)
+
+		Aragorn.Close()
+	}
+
+	Aragorn.Run(ctx)
+
+	time.Sleep(time.Second)
+
+	wg.Add(1)
+	send()
+	wg.Wait()
+}
+
+func peerStructForName(t *testing.T, name string, conf *config.Config) *Peer {
+	peer, peers := conf.Peers.Pop(name)
+	return &Peer{
+		Peer:  *peer,
+		peers: peers,
+		transactions: Transactions{
+			ts: make(map[TransactionId]*Transaction, 2),
+			mu: new(sync.Mutex),
+		},
+		mirror: mirrorMock{},
+		connPool: connection.NewPool(
+			peer,
+			peers,
+			&conf.Connection,
+			testTLSConf(t, name)),
+	}
 }
 
 //go:embed test_data/certs

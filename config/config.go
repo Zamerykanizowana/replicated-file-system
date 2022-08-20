@@ -43,10 +43,12 @@ func Read(path string) *Config {
 type (
 	Config struct {
 		Connection Connection `json:"connection" validate:"required"`
-		Peers      []*Peer    `json:"peers" validate:"required,gt=0,unique=Name"`
+		Peers      Peers      `json:"peers" validate:"required,gt=0,unique=Name"`
 		Paths      Paths      `json:"paths" validate:"required"`
 		Logging    Logging    `json:"logging" validate:"required"`
 	}
+
+	Peers []*Peer
 
 	Peer struct {
 		// Name must be a unique identifier across all peers.
@@ -106,6 +108,24 @@ func (c Config) MarshalZerologObject(e *zerolog.Event) {
 func (p Paths) MarshalZerologObject(e *zerolog.Event) {
 	e.Str("fuse_dir", p.FuseDir).
 		Str("mirror_dir", p.MirrorDir)
+}
+
+// Pop returns and removes Peer with a given name from Peers.
+// It returns the re-sliced Peers and does not modify the receiver.
+func (p Peers) Pop(name string) (*Peer, Peers) {
+	var i int
+	for j, peer := range p {
+		if peer.Name == name {
+			i = j
+			break
+		}
+	}
+	popped := p[i]
+	// Remove from the slice.
+	sliced := make(Peers, 0, len(p)-1)
+	copy(sliced, p[:i])
+	copy(sliced, p[i+1:])
+	return popped, sliced
 }
 
 func (p Peer) MarshalZerologObject(e *zerolog.Event) {
