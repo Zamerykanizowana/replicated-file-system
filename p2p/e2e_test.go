@@ -29,6 +29,9 @@ var testHomer []byte
 //go:embed test_data/gimlis_config.json
 var gimlisConf []byte
 
+//go:embed test_data/gimlis_config.json
+var legolasConf []byte
+
 //go:embed test_data/aragorns_config.json
 var aragornsConf []byte
 
@@ -122,16 +125,61 @@ func TestHost_Reconnection(t *testing.T) {
 	wg.Wait()
 }
 
+func TestHost_ConflictsResolving(t *testing.T) {
+	Aragorn := hostStructForName(t, AragornsName, config.MustUnmarshalConfig(aragornsConf))
+	Gimli := hostStructForName(t, GimlisName, config.MustUnmarshalConfig(gimlisConf))
+	Legolas := hostStructForName(t, GimlisName, config.MustUnmarshalConfig(legolasConf))
+
+	ctx := context.Background()
+	Aragorn.Run(ctx)
+	Gimli.Run(ctx)
+	Legolas.Run(ctx)
+
+	time.Sleep(1 * time.Second)
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		require.NoError(t, Aragorn.Replicate(ctx, &protobuf.Request{
+			Type:     protobuf.Request_CREATE,
+			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere/same", Mode: 0666},
+			Content:  testHomer,
+		}),
+			"Aragorn should've succeeded to replicate; conflict resolved in his favor")
+	}()
+
+	go func() {
+		defer wg.Done()
+		require.Error(t, Gimli.Replicate(ctx, &protobuf.Request{
+			Type:     protobuf.Request_CREATE,
+			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere/same", Mode: 0666},
+			Content:  testShakespeare,
+		}),
+			"Gimli should've been rejected; conflict resolved in favor of Aragorn")
+	}()
+
+	go func() {
+		defer wg.Done()
+		require.Error(t, Legolas.Replicate(ctx, &protobuf.Request{
+			Type:     protobuf.Request_CREATE,
+			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere/same", Mode: 0666},
+			Content:  testShakespeare,
+		}),
+			"Legolas should've been rejected; conflict resolved in favor of Aragorn")
+	}()
+
+	wg.Wait()
+}
+
 func hostStructForName(t *testing.T, name string, conf *config.Config) *Host {
 	peer, peers := conf.Peers.Pop(name)
 	return &Host{
-		Peer:  *peer,
-		peers: peers,
-		transactions: Transactions{
-			ts: make(map[TransactionId]*Transaction, 2),
-			mu: new(sync.Mutex),
-		},
-		mirror: mirrorMock{},
+		Peer:         *peer,
+		peers:        peers,
+		transactions: newTransactions(name),
+		mirror:       mirrorMock{},
 		connPool: connection.NewPool(
 			peer,
 			peers,

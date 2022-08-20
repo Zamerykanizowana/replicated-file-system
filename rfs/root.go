@@ -2,7 +2,6 @@ package rfs
 
 import (
 	"context"
-	"path"
 	"path/filepath"
 	"syscall"
 
@@ -147,5 +146,5 @@ func (r *rfsRoot) CopyFileRange(ctx context.Context, fhIn fs.FileHandle,
 }
 
 func (r *rfsRoot) relativePath(name string) string {
-	return path.Join(r.Path(r.Root()), name)
+	return filepath.Join(r.Path(r.Root()), name)
 }

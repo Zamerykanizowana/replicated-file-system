@@ -1,0 +1,33 @@
+{
+  "connection": {
+    "tls_version": "1.3",
+    "message_buffer_size": 10000,
+    "dial_backoff": {
+      "initial": 100000000,
+      "max": 30000000000,
+      "factor": 1.3,
+      "max_factor_jitter": 0.2
+    },
+    "send_recv_timeout": 60000000000,
+    "handshake_timeout": 5000000000,
+    "network": "tcp",
+    "compression": "DefaultCompression"
+  },
+  "peers": [
+    {
+      "address": "localhost:9001",
+      "name": "Aragorn"
+    },
+    {
+      "address": "localhost:9005",
+      "name": "Gimli"
+    }
+  ],
+  "paths": {
+    "fuse_dir": "~/other/rfs/virtual-legolas",
+    "mirror_dir": "~/other/rfs/contents-legolas"
+  },
+  "logging": {
+    "level": "debug"
+  }
+}
