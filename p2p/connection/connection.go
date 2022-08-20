@@ -9,6 +9,7 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
@@ -29,7 +30,6 @@ func NewConnection(
 		perspectiveResolver: newPerspectiveResolver(),
 		mu:                  new(sync.Mutex),
 		openNotify:          make(chan struct{}),
-		closeNotify:         make(chan struct{}),
 		netOpTimeout:        timeout,
 		sink:                sink,
 	}
@@ -47,12 +47,8 @@ type (
 		perspectiveResolver *perspectiveResolver
 		mu                  *sync.Mutex
 		openNotify          chan struct{}
-		// closeNotify should only be called when we would like to reestablish the connection.
-		// Right now there's no such case, but If it's ever the case we should make sure the
-		// goroutine responsible for dialing is shutdown too.
-		closeNotify  chan struct{}
-		netOpTimeout time.Duration
-		sink         chan<- message
+		netOpTimeout        time.Duration
+		sink                chan<- message
 	}
 	// Status informs about the connection state, If the net.Conn is established and running
 	// it will hold StatusAlive, otherwise StatusDead.
@@ -87,6 +83,8 @@ func (c *Connection) Establish(
 	perspective Perspective,
 	conn quic.Connection,
 ) error {
+	log.Debug().EmbedObject(c).Msg("handling new connection request")
+
 	// Fast path, no need to use mutex if we're already alive.
 	if c.status == StatusAlive && c.perspective != Unknown {
 		return connErrAlreadyEstablished
@@ -115,14 +113,23 @@ func (c *Connection) Establish(
 		return connErrAlreadyEstablished
 	}
 
-	c.perspectiveResolver.Reset()
 	c.conn = conn
 	c.perspective = perspective
 	c.status = StatusAlive
-	c.openNotify <- struct{}{}
+	go func() { c.openNotify <- struct{}{} }()
 
-	log.Ctx(ctx).Info().Stringer("perspective", perspective).Msg("connection established")
+	go c.watchConnection(conn)
+
+	log.Info().EmbedObject(c).Msg("connection established")
 	return nil
+}
+
+// watchConnection watches the quic.Connection and block until the context.Context associated with
+// this connection reruns. It then resets the Connection and notifies the routines blocked at WaitForClosed.
+func (c *Connection) watchConnection(conn quic.Connection) {
+	ctx := conn.Context()
+	<-ctx.Done()
+	c.Close(ctx.Err())
 }
 
 // Listen runs receiver loop, waiting for new messages.
@@ -150,7 +157,7 @@ func (c *Connection) Recv(ctx context.Context) (data []byte, err error) {
 		return nil, connErrClosed
 	}
 	data, err = recv(ctx, c.conn, c.netOpTimeout)
-	if err = c.handleErrors(ctx, err); err != nil {
+	if err = c.handleErrors(err); err != nil {
 		return nil, errors.Wrap(err, "failed to receive data")
 	}
 	return
@@ -163,7 +170,7 @@ func (c *Connection) Send(ctx context.Context, data []byte) (err error) {
 	}
 	ctx, cancel := contextWithOptionalTimeout(ctx, c.netOpTimeout)
 	defer cancel()
-	if err = c.handleErrors(ctx, send(ctx, c.conn, data)); err != nil {
+	if err = c.handleErrors(send(ctx, c.conn, data)); err != nil {
 		return errors.Wrap(err, "failed to send data")
 	}
 	return
@@ -180,22 +187,39 @@ func (c *Connection) WaitForOpen() {
 	return
 }
 
-// WaitForClosed blocks until the Connection Status changes from StatusAlive to StatusDead.
-func (c *Connection) WaitForClosed() {
-	<-c.closeNotify
-	return
-}
-
 // Close closes the underlying net.Conn and sets Connection Status to StatusDead.
 func (c *Connection) Close(err error) {
 	c.mu.Lock()
-	closeConn(c.conn, err)
+	defer c.mu.Unlock()
+
+	// Either watchConnection or handleErrors gets here first.
+	if c.status == StatusDead {
+		return
+	}
+
+	log.Err(err).EmbedObject(c).Msg("connection to the peer was lost")
+
+	// It should only be called when the remote connection was not closed yet, so it won't
+	// attempt to close a connection that is already dead, this will result in blocking here
+	// potentially forever...
+	if c.conn.Context().Err() == nil {
+		closeConn(c.conn, err)
+	}
+
 	c.status = StatusDead
-	c.mu.Unlock()
+	c.perspective = Unknown
+	c.perspectiveResolver.Reset()
+}
+
+func (c *Connection) MarshalZerologObject(e *zerolog.Event) {
+	e.Object("host", c.host).
+		Object("peer", c.peer).
+		Stringer("status", c.status).
+		Stringer("perspective", c.perspective)
 }
 
 // handleErrors discerns temporary errors from permanent and closes the Connection for the latter.
-func (c *Connection) handleErrors(ctx context.Context, err error) error {
+func (c *Connection) handleErrors(err error) error {
 	cause := errors.Cause(err)
 	// Unwrap if we can, this helps reveal net.OpError from
 	// tls.permanentError (which is private for whatever reason...).
@@ -215,21 +239,19 @@ func (c *Connection) handleErrors(ctx context.Context, err error) error {
 				closed = true
 			}
 		case *quic.StreamError:
-			return streamErr(e.ErrorCode)
+			err = streamErr(e.ErrorCode)
 		case *quic.ApplicationError:
 			err = connErr(e.ErrorCode)
 			switch err {
 			case connErrAlreadyEstablished:
-				log.Ctx(ctx).Debug().Err(err).Send()
 				return nil
-			default:
-				return err
+			case connErrClosed:
+				closed = true
 			}
 		}
 	}
 	if closed {
 		c.Close(err)
-		c.closeNotify <- struct{}{}
 		return errors.Wrap(err, connErrClosed.Error())
 	}
 	return err

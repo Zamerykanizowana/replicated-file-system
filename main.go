@@ -94,6 +94,7 @@ func run(ctx context.Context, conf *config.Config) error {
 	go func() {
 		sig := <-sigs
 		log.Info().Str("signal", fmt.Sprint(sig)).Msg("Signal received!")
+		peer.Close()
 		err := server.Server.Unmount()
 		if err != nil {
 			log.Err(err).Msg("unsuccessful unmount")

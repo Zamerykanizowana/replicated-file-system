@@ -19,27 +19,15 @@
       "name": "Aragorn"
     },
     {
-      "address": "localhost:9002",
-      "name": "Legolas"
-    },
-    {
-      "address": "localhost:9003",
-      "name": "Frodo"
-    },
-    {
-      "address": "localhost:9004",
-      "name": "Gandalf"
-    },
-    {
       "address": "localhost:9005",
       "name": "Gimli"
     }
   ],
   "paths": {
-    "fuse_dir": "~/other/rfs/virtual",
-    "mirror_dir": "~/other/rfs/contents"
+    "fuse_dir": "~/other/rfs/virtual-gimli",
+    "mirror_dir": "~/other/rfs/contents-gimli"
   },
   "logging": {
-    "level": "info"
+    "level": "debug"
   }
 }
