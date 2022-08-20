@@ -37,11 +37,14 @@ const (
 	GimlisName   = "Gimli"
 )
 
-func TestPeer_ReplicateSingleOperation(t *testing.T) {
+func TestMain(m *testing.M) {
 	logging.Configure(&config.Logging{Level: "debug"})
+	m.Run()
+}
 
-	Aragorn := peerStructForName(t, AragornsName, config.MustUnmarshalConfig(aragornsConf))
-	Gimli := peerStructForName(t, GimlisName, config.MustUnmarshalConfig(gimlisConf))
+func TestHost_ReplicateSingleOperation(t *testing.T) {
+	Aragorn := hostStructForName(t, AragornsName, config.MustUnmarshalConfig(aragornsConf))
+	Gimli := hostStructForName(t, GimlisName, config.MustUnmarshalConfig(gimlisConf))
 
 	ctx := context.Background()
 	Aragorn.Run(ctx)
@@ -75,11 +78,9 @@ func TestPeer_ReplicateSingleOperation(t *testing.T) {
 	wg.Wait()
 }
 
-func TestPeer_Reconnection(t *testing.T) {
-	logging.Configure(&config.Logging{Level: "debug"})
-
-	Aragorn := peerStructForName(t, AragornsName, config.MustUnmarshalConfig(aragornsConf))
-	Gimli := peerStructForName(t, GimlisName, config.MustUnmarshalConfig(gimlisConf))
+func TestHost_Reconnection(t *testing.T) {
+	Aragorn := hostStructForName(t, AragornsName, config.MustUnmarshalConfig(aragornsConf))
+	Gimli := hostStructForName(t, GimlisName, config.MustUnmarshalConfig(gimlisConf))
 
 	ctx := context.Background()
 	Gimli.Run(ctx)
@@ -102,14 +103,14 @@ func TestPeer_Reconnection(t *testing.T) {
 	send()
 	wg.Wait()
 
-	Aragorn.Close()
+	_ = Aragorn.Close()
 
 	for i := 0; i < 10; i++ {
 		Aragorn.Run(ctx)
 
 		time.Sleep(50 * time.Millisecond)
 
-		Aragorn.Close()
+		_ = Aragorn.Close()
 	}
 
 	Aragorn.Run(ctx)
@@ -121,9 +122,9 @@ func TestPeer_Reconnection(t *testing.T) {
 	wg.Wait()
 }
 
-func peerStructForName(t *testing.T, name string, conf *config.Config) *Peer {
+func hostStructForName(t *testing.T, name string, conf *config.Config) *Host {
 	peer, peers := conf.Peers.Pop(name)
-	return &Peer{
+	return &Host{
 		Peer:  *peer,
 		peers: peers,
 		transactions: Transactions{
