@@ -1,6 +1,2 @@
 .idea
 bin
-*.key
-*.crt
-*.csr
-*.srl

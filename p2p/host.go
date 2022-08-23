@@ -37,9 +37,10 @@ func NewHost(
 	return &Host{
 		Peer:         *host,
 		connPool:     connection.NewPool(host, peers, connConfig, tlsconf.Default(connConfig.GetTLSVersion())),
-		transactions: newTransactions(host.Name),
+		transactions: newTransactions(),
 		peers:        peers,
 		mirror:       mirror,
+		conflicts:    newConflictsResolver(),
 	}
 }
 
@@ -47,9 +48,10 @@ func NewHost(
 type Host struct {
 	config.Peer
 	connPool     *connection.Pool
-	transactions *transactions
+	transactions *Transactions
 	peers        []*config.Peer
 	mirror       Mirror
+	conflicts    *conflictsResolver
 }
 
 // Run kicks of connection processes for the Host.
@@ -65,6 +67,11 @@ func (h *Host) Close() error {
 	return nil
 }
 
+var (
+	ErrTransactionConflict = errors.New("transaction conflict detected and resolved in favor of other peer")
+	ErrNotPermitted        = errors.New("operation was not permitted")
+)
+
 func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 	tid := uuid.New().String()
 	message, err := protobuf.NewRequestMessage(tid, h.Name, request)
@@ -73,6 +80,11 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 	}
 
 	trans, _ := h.transactions.Put(message)
+
+	detected, greenLight := h.conflicts.DetectAndResolveConflict(h.transactions, message)
+	if detected && !greenLight {
+		return ErrTransactionConflict
+	}
 
 	sentMessagesCount := len(h.peers)
 	if err = h.broadcast(ctx, message); err != nil {
@@ -90,8 +102,8 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 	}
 
 	for _, resp := range trans.Responses {
-		if resp.Type != protobuf.Response_ACK {
-			return errors.New("operation was not permitted")
+		if resp.Type == protobuf.Response_NACK {
+			return ErrNotPermitted
 		}
 	}
 	return nil
@@ -119,7 +131,7 @@ func (h *Host) receive() (*protobuf.Message, error) {
 	return protobuf.ReadMessage(data)
 }
 
-func (h *Host) handleTransaction(ctx context.Context, transaction *transaction) error {
+func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) error {
 	var ourResponse protobuf.Response_Type
 	for range h.peers {
 		msg := <-transaction.NotifyChan
@@ -128,6 +140,14 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *transaction) 
 
 		if request := msg.GetRequest(); request != nil {
 			response := h.mirror.Consult(request)
+			if response.Type == protobuf.Response_ACK {
+				detected, greenLight := h.conflicts.DetectAndResolveConflict(h.transactions, msg)
+				if detected && !greenLight {
+					response = protobuf.NACK(
+						protobuf.Response_ERR_TRANSACTION_CONFLICT,
+						ErrTransactionConflict)
+				}
+			}
 			ourResponse = response.Type
 			message := protobuf.NewResponseMessage(msg.Tid, h.Name, response)
 			log.Info().Object("message", message).Msg("consulted response result")
@@ -145,7 +165,7 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *transaction) 
 		}
 	}
 	if !permitted {
-		return errors.New("operation was not permitted")
+		return ErrNotPermitted
 	}
 
 	return h.mirror.Mirror(transaction.Request)

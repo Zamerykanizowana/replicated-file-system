@@ -122,9 +122,7 @@ func (p Peers) Pop(name string) (*Peer, Peers) {
 	}
 	popped := p[i]
 	// Remove from the slice.
-	sliced := make(Peers, 0, len(p)-1)
-	copy(sliced, p[:i])
-	copy(sliced, p[i+1:])
+	sliced := append(p[:i], p[i+1:]...)
 	return popped, sliced
 }
 

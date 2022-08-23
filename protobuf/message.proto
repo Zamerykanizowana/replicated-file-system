@@ -16,7 +16,8 @@ message Message {
 message Request {
   Type type = 1;
   Metadata metadata = 2;
-  optional bytes content = 3;
+  uint64 clock = 3;
+  optional bytes content = 4;
 
   enum Type {
     CREATE = 0;
@@ -49,5 +50,6 @@ message Response {
   enum Error {
     ERR_UNKNOWN = 0;
     ERR_ALREADY_EXISTS = 1;
+    ERR_TRANSACTION_CONFLICT = 2;
   }
 }

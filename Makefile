@@ -18,7 +18,7 @@ DOCKER_IMAGE = "${APP_NAME}:${GIT_BRANCH}-${GIT_COMMIT}"
 
 CERT_AGE := -days 365
 CERT_KEY_SIZE = 4096
-CERT_PATH = p2p/connection/cert
+CERT_PATH ?= p2p/connection/cert
 
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
@@ -63,7 +63,7 @@ cert/generate-ca:
 		-keyout ca.key
 
 cert/create: cert/generate-peer-key cert/generate-peer-csr cert/sign-csr
-	@printf '\n${YELLOW}Generated peer certificate, which will be embedded and used for TLS${RESET}\n'
+	@printf '\n${YELLOW}Generated ${PEER} certificate, which will be embedded and used for TLS${RESET}\n'
 	@printf '${YELLOW}Make sure the same CA (certificate authority) key is used to sign all peer certificates${RESET}\n'
 
 cert/generate-peer-key:
