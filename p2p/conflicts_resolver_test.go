@@ -50,18 +50,18 @@ func TestConflictsResolver_DetectAndResolveConflict(t *testing.T) {
 		"conflict resolved in favor of new message based on clock": {
 			currentTransactions: []*protobuf.Message{
 				newRequestMessage(t, protobuf.Request_CREATE, "123", "/places", "Gimli", 0),
-				newRequestMessage(t, protobuf.Request_CREATE, "333", "/somewhere", "Gimli", 1),
+				newRequestMessage(t, protobuf.Request_CREATE, "333", "/somewhere", "Gimli", 0),
 			},
-			message:      newRequestMessage(t, protobuf.Request_MKDIR, "321", "/somewhere", "Aragorn", 0),
+			message:      newRequestMessage(t, protobuf.Request_MKDIR, "321", "/somewhere", "Aragorn", 1),
 			isDetected:   true,
 			isGreenLight: true,
 		},
 		"conflict resolved in favor of ongoing transaction based on clock": {
 			currentTransactions: []*protobuf.Message{
 				newRequestMessage(t, protobuf.Request_CREATE, "123", "/places", "Gimli", 0),
-				newRequestMessage(t, protobuf.Request_CREATE, "333", "/somewhere", "Gimli", 0),
+				newRequestMessage(t, protobuf.Request_CREATE, "333", "/somewhere", "Gimli", 1),
 			},
-			message:      newRequestMessage(t, protobuf.Request_MKDIR, "321", "/somewhere", "Aragorn", 1),
+			message:      newRequestMessage(t, protobuf.Request_MKDIR, "321", "/somewhere", "Aragorn", 0),
 			isDetected:   true,
 			isGreenLight: false,
 		},
