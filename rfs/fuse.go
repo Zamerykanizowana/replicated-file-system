@@ -16,13 +16,14 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
 
-func NewServer(c config.Config, p *p2p.Host) *Server {
+func NewServer(c config.Config, p *p2p.Host, mirror Mirror) *Server {
 	if err := os.MkdirAll(c.Paths.FuseDir, 0777); err != nil {
 		log.Fatal().Err(err).Msg("unable to create local directory")
 	}
 
 	root := &rfsRoot{
-		peer: p,
+		peer:   p,
+		mirror: mirror,
 	}
 
 	loopbackRoot := &fs.LoopbackRoot{

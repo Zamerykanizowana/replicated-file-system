@@ -24,7 +24,6 @@ type loopbackFile interface {
 	Lseek(ctx context.Context, off uint64, whence uint32) (uint64, syscall.Errno)
 	Flush(ctx context.Context) syscall.Errno
 	Fsync(ctx context.Context, flags uint32) syscall.Errno
-	Setattr(ctx context.Context, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno
 	Allocate(ctx context.Context, off uint64, size uint64, mode uint32) syscall.Errno
 }
 

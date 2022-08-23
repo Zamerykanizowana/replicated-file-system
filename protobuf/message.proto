@@ -50,6 +50,7 @@ message Response {
   enum Error {
     ERR_UNKNOWN = 0;
     ERR_ALREADY_EXISTS = 1;
-    ERR_TRANSACTION_CONFLICT = 2;
+    ERR_DOES_NOT_EXIST = 2;
+    ERR_TRANSACTION_CONFLICT = 3;
   }
 }

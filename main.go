@@ -82,7 +82,7 @@ func run(ctx context.Context, conf *config.Config) error {
 	host := p2p.NewHost(flagValues.Name, conf.Peers, &conf.Connection, mir)
 	host.Run(ctx)
 
-	server := rfs.NewServer(*conf, host)
+	server := rfs.NewServer(*conf, host, mir)
 
 	if err := server.Mount(); err != nil {
 		return errors.Wrap(err, "unable to mount fuse filesystem")
