@@ -30,13 +30,13 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 	case protobuf.Request_LINK:
 	case protobuf.Request_MKDIR:
 	case protobuf.Request_RENAME:
-	case protobuf.Request_RMDIR:
+	case protobuf.Request_RMDIR, protobuf.Request_UNLINK:
+		return os.Remove(m.path(request.Metadata.RelativePath))
 	case protobuf.Request_SETATTR:
 		return os.Chmod(
 			m.path(request.Metadata.RelativePath),
 			os.FileMode(request.Metadata.Mode))
 	case protobuf.Request_SYMLINK:
-	case protobuf.Request_UNLINK:
 	case protobuf.Request_WRITE:
 	default:
 		log.Panic().Msg("BUG: unknown protobuf.Request_Type")
