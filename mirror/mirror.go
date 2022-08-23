@@ -78,6 +78,13 @@ func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 		return protobuf.ACK()
 	case protobuf.Request_SYMLINK:
 	case protobuf.Request_UNLINK:
+		if _, err := os.Stat(m.path(request.Metadata.RelativePath)); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return protobuf.ACK()
+			}
+			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
+		}
+		return protobuf.ACK()
 	case protobuf.Request_WRITE:
 	default:
 		log.Panic().Msg("BUG: unknown protobuf.Request_Type")
