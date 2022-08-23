@@ -33,7 +33,8 @@ message Request {
 
   message Metadata {
     string relative_path = 1;
-    uint32 mode = 2;
+    string new_relative_path = 2;
+    uint32 mode = 3;
   }
 }
 
