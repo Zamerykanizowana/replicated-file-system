@@ -26,6 +26,7 @@ type rfsRoot struct {
 func (r *rfsRoot) newRfsRoot(lr *fs.LoopbackRoot, p *fs.Inode, n string, st *syscall.Stat_t) fs.InodeEmbedder {
 	return &rfsRoot{
 		peer:         r.peer,
+		mirror:       r.mirror,
 		LoopbackNode: fs.LoopbackNode{RootData: lr}}
 }
 
