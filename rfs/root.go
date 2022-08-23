@@ -97,13 +97,25 @@ func (r *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmb
 }
 
 func (r *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
-	_ = r.LoopbackNode.Rmdir(ctx, name)
+	req := &protobuf.Request{
+		Type: protobuf.Request_RMDIR,
+		Metadata: &protobuf.Request_Metadata{
+			RelativePath: r.Path(r.Root()),
+		},
+	}
 
-	fakeError := syscall.EISDIR
+	if permitted := r.consultMirror(req); !permitted {
+		return PermissionDenied
+	}
 
-	log.Info().Msg("error for rmdir: EISDIR: Is a directory")
+	if err := r.peer.Replicate(ctx, req); err != nil {
+		log.Err(err).
+			Object("request", req).
+			Msg("failed to remove a directory")
+		return PermissionDenied
+	}
 
-	return fakeError
+	return r.LoopbackNode.Rmdir(ctx, name)
 }
 
 func (r *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
@@ -139,13 +151,25 @@ func (r *rfsRoot) Symlink(ctx context.Context, target, name string, out *fuse.En
 }
 
 func (r *rfsRoot) Unlink(ctx context.Context, name string) syscall.Errno {
-	_ = r.LoopbackNode.Unlink(ctx, name)
+	req := &protobuf.Request{
+		Type: protobuf.Request_UNLINK,
+		Metadata: &protobuf.Request_Metadata{
+			RelativePath: r.Path(r.Root()),
+		},
+	}
 
-	fakeError := syscall.ENOSPC
+	if permitted := r.consultMirror(req); !permitted {
+		return PermissionDenied
+	}
 
-	log.Info().Msg("error for unlink: ENOSPC: No space left on device")
+	if err := r.peer.Replicate(ctx, req); err != nil {
+		log.Err(err).
+			Object("request", req).
+			Msg("failed to remove a directory")
+		return PermissionDenied
+	}
 
-	return fakeError
+	return r.LoopbackNode.Unlink(ctx, name)
 }
 
 func (r *rfsRoot) CopyFileRange(ctx context.Context, fhIn fs.FileHandle,
