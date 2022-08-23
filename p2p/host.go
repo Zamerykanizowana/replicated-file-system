@@ -80,6 +80,7 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 	}
 
 	trans, _ := h.transactions.Put(message)
+	defer h.transactions.Delete(message.Tid)
 
 	detected, greenLight := h.conflicts.DetectAndResolveConflict(h.transactions, message)
 	if detected && !greenLight {
@@ -90,7 +91,6 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 	sentMessagesCount := len(h.peers)
 	if err = h.broadcast(ctx, message); err != nil {
 		if sendErr, ok := err.(*connection.SendMultiErr); ok && len(sendErr.Errors()) == len(h.peers) {
-			h.transactions.Delete(message.Tid)
 			return err
 		} else {
 			sentMessagesCount = len(h.peers) - len(sendErr.Errors())
@@ -229,7 +229,7 @@ func (h *Host) listen(ctx context.Context) {
 		if created {
 			go func() {
 				if err = h.handleTransaction(ctx, trans); err != nil {
-					log.Err(err)
+					log.Err(err).Send()
 				}
 				h.transactions.Delete(trans.Tid)
 			}()

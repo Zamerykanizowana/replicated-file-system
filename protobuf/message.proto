@@ -35,6 +35,7 @@ message Request {
     string relative_path = 1;
     string new_relative_path = 2;
     uint32 mode = 3;
+    int64 write_offset = 4;
   }
 }
 

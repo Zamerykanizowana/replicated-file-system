@@ -42,6 +42,12 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 			m.path(request.Metadata.RelativePath),
 			os.FileMode(request.Metadata.Mode))
 	case protobuf.Request_WRITE:
+		f, err := os.OpenFile(m.path(request.Metadata.RelativePath), os.O_WRONLY, 0)
+		if err != nil {
+			return err
+		}
+		_, err = f.WriteAt(request.Content, request.Metadata.WriteOffset)
+		return err
 	default:
 		log.Panic().Msg("BUG: unknown protobuf.Request_Type")
 	}
@@ -102,6 +108,8 @@ func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 		}
 		return protobuf.ACK()
 	case protobuf.Request_WRITE:
+		// TODO verify it!
+		return protobuf.ACK()
 	default:
 		log.Panic().Msg("BUG: unknown protobuf.Request_Type")
 	}
