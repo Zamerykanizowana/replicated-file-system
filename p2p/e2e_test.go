@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
@@ -165,40 +166,62 @@ func TestHost_ConflictsResolving(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(3)
 
-	go func() {
+	send := func(host *Host, shouldSucceed bool) {
 		defer wg.Done()
-		require.NoError(t, Aragorn.Replicate(ctx, &protobuf.Request{
-			Type:     protobuf.Request_CREATE,
-			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere/same", Mode: 0666},
-			Content:  testHomer,
-			Clock:    0,
-		}),
-			"Aragorn should've succeeded to replicate; conflict resolved in his favor")
-	}()
 
-	go func() {
-		defer wg.Done()
-		require.Error(t, Gimli.Replicate(ctx, &protobuf.Request{
+		req := &protobuf.Request{
 			Type:     protobuf.Request_CREATE,
 			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere/same", Mode: 0666},
-			Content:  testShakespeare,
-			Clock:    1,
-		}),
-			"Gimli should've been rejected; conflict resolved in favor of Aragorn")
-	}()
+			Clock:    host.conflicts.clock.Load(),
+		}
+		err := host.Replicate(ctx, req)
+		if shouldSucceed {
+			require.NoError(t, err,
+				"%s should've succeeded to replicate; conflict resolved in his favor", host.Name)
+		} else {
+			require.Error(t, err,
+				"%s should've been rejected; conflict resolved in favor of the other peer", host.Name)
+		}
+	}
 
-	go func() {
-		defer wg.Done()
-		require.Error(t, Legolas.Replicate(ctx, &protobuf.Request{
-			Type:     protobuf.Request_CREATE,
-			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere/same", Mode: 0666},
-			Content:  testImage,
-			Clock:    1,
-		}),
-			"Legolas should've been rejected; conflict resolved in favor of Aragorn")
-	}()
+	// Set the clocks.
+	Aragorn.conflicts.clock.Store(1)
+	Legolas.conflicts.clock.Store(0)
+	Gimli.conflicts.clock.Store(0)
+
+	go send(Aragorn, true)
+	go send(Gimli, false)
+	go send(Legolas, false)
 
 	wg.Wait()
+
+	assert.EqualValues(t, 1, Aragorn.conflicts.clock.Load())
+	assert.EqualValues(t, 1, Gimli.conflicts.clock.Load())
+	assert.EqualValues(t, 1, Legolas.conflicts.clock.Load())
+
+	wg.Add(2)
+
+	go send(Gimli, false)
+	go send(Legolas, true)
+
+	wg.Wait()
+
+	assert.True(t, Legolas.Name > Gimli.Name)
+	assert.EqualValues(t, 1, Aragorn.conflicts.clock.Load())
+	assert.EqualValues(t, 2, Gimli.conflicts.clock.Load())
+	assert.EqualValues(t, 1, Legolas.conflicts.clock.Load())
+
+	wg.Add(3)
+
+	go send(Gimli, true)
+	go send(Legolas, false)
+	go send(Aragorn, false)
+
+	wg.Wait()
+
+	assert.EqualValues(t, 2, Aragorn.conflicts.clock.Load())
+	assert.EqualValues(t, 2, Gimli.conflicts.clock.Load())
+	assert.EqualValues(t, 2, Legolas.conflicts.clock.Load())
 }
 
 func hostStructForName(t *testing.T, name string) *Host {

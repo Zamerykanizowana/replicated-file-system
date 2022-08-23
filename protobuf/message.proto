@@ -53,5 +53,6 @@ message Response {
     ERR_ALREADY_EXISTS = 1;
     ERR_DOES_NOT_EXIST = 2;
     ERR_TRANSACTION_CONFLICT = 3;
+    ERR_NOT_A_DIRECTORY = 4;
   }
 }

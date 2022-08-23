@@ -17,7 +17,12 @@ func newConflictsResolver() *conflictsResolver {
 }
 
 type conflictsResolver struct {
+	clock     atomic.Uint64
 	conflicts map[protobuf.Request_Type]atomic.Uint64
+}
+
+func (c *conflictsResolver) IncrementClock() {
+	c.clock.Add(1)
 }
 
 func (c *conflictsResolver) DetectAndResolveConflict(
@@ -42,9 +47,9 @@ func (c *conflictsResolver) DetectAndResolveConflict(
 			continue
 		}
 		detected = true
-		// If the request clock is greater than the Transactions, give a green light.
+		// If the request clock is smaller than the Transactions, give a green light.
 		// This prevents starvation problems, when one peer looses the conflicts resolution too often.
-		if req.Clock > t.Request.Clock {
+		if req.Clock < t.Request.Clock {
 			return true, false
 		}
 		// If the clocks are equal, compare peer names as a fallback.
