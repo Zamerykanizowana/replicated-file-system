@@ -33,13 +33,13 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 			m.path(request.Metadata.RelativePath),
 			os.FileMode(request.Metadata.Mode))
 	case protobuf.Request_RENAME:
-	case protobuf.Request_RMDIR:
+	case protobuf.Request_RMDIR, protobuf.Request_UNLINK:
+		return os.Remove(m.path(request.Metadata.RelativePath))
 	case protobuf.Request_SETATTR:
 		return os.Chmod(
 			m.path(request.Metadata.RelativePath),
 			os.FileMode(request.Metadata.Mode))
 	case protobuf.Request_SYMLINK:
-	case protobuf.Request_UNLINK:
 	case protobuf.Request_WRITE:
 	default:
 		log.Panic().Msg("BUG: unknown protobuf.Request_Type")
@@ -61,6 +61,16 @@ func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 	case protobuf.Request_LINK:
 	case protobuf.Request_RENAME:
 	case protobuf.Request_RMDIR:
+		if pathInfo, err := os.Stat(m.path(request.Metadata.RelativePath)); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return protobuf.NACK(protobuf.Response_ERR_DOES_NOT_EXIST, err)
+			}
+
+			if !pathInfo.IsDir() {
+				return protobuf.NACK(protobuf.Response_ERR_NOT_A_DIRECTORY, nil)
+			}
+			return protobuf.ACK()
+		}
 	case protobuf.Request_SETATTR:
 		if _, err := os.Stat(m.path(request.Metadata.RelativePath)); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -71,6 +81,13 @@ func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 		return protobuf.ACK()
 	case protobuf.Request_SYMLINK:
 	case protobuf.Request_UNLINK:
+		if _, err := os.Stat(m.path(request.Metadata.RelativePath)); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return protobuf.ACK()
+			}
+			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
+		}
+		return protobuf.ACK()
 	case protobuf.Request_WRITE:
 	default:
 		log.Panic().Msg("BUG: unknown protobuf.Request_Type")
