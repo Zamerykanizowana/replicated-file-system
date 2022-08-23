@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
@@ -77,6 +78,11 @@ type (
 		dialBackoffConfig *config.Backoff
 		// TODO correct naming here!
 		handshakeTimeout time.Duration
+		// activeConnectionHandlers keeps the count of all accepted and dialed connections which
+		// have not been verified yet.
+		activeConnectionHandlers atomic.Int64
+		// closed informs whether the pool was closed.
+		closed atomic.Bool
 	}
 	// message allows passing errors along with data through channels.
 	message struct {
@@ -97,9 +103,31 @@ func (p *Pool) Run(ctx context.Context) {
 // Close attempts to gracefully close all connections in a blocking manner.
 func (p *Pool) Close() {
 	log.Info().Object("host", p.host).Msg("Closing all network connections")
+	p.closed.Store(true)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	for {
+		<-ticker.C
+		if p.activeConnectionHandlers.Load() == 0 {
+			break
+		}
+	}
 	for _, conn := range p.pool {
 		closeConn(conn.conn, connErrClosed)
 	}
+}
+
+var errPoolClosed = errors.New("pool is being shutdown")
+
+func (p *Pool) addConnectionHandler() error {
+	p.activeConnectionHandlers.Add(1)
+	if p.closed.Load() {
+		return errPoolClosed
+	}
+	return nil
+}
+
+func (p *Pool) removeConnectionHandler() {
+	p.activeConnectionHandlers.Add(-1)
 }
 
 // Broadcast sends the data to all connections by calling Connection.Send in a separate goroutine
@@ -151,12 +179,16 @@ func (p *Pool) acceptConnections(ctx context.Context) {
 			log.Err(err).Object("host", p.host).Msg("failed to accept incoming connection")
 			continue
 		}
+		if err = p.addConnectionHandler(); err != nil {
+			return
+		}
 		go func() {
 			ctx, cancel := contextWithOptionalTimeout(ctx, p.handshakeTimeout)
 			defer cancel()
 			if err = p.add(ctx, Server, conn); err != nil {
 				log.Debug().Err(err).Object("host", p.host).Send()
 			}
+			p.removeConnectionHandler()
 		}()
 	}
 }
@@ -191,6 +223,9 @@ func (p *Pool) dial(ctx context.Context, c *Connection) {
 			}
 		}
 		if err = p.dialOnce(c); err != nil {
+			if err == errPoolClosed {
+				return
+			}
 			backoff.Next()
 			log.Ctx(ctx).Debug().Err(err).
 				Object("host", p.host).
@@ -208,6 +243,10 @@ func (p *Pool) dial(ctx context.Context, c *Connection) {
 func (p *Pool) dialOnce(c *Connection) error {
 	ctx, cancel := contextWithOptionalTimeout(context.Background(), p.handshakeTimeout)
 	defer cancel()
+	if err := p.addConnectionHandler(); err != nil {
+		return err
+	}
+	defer p.removeConnectionHandler()
 	conn, err := p.dialFunc(ctx, c.peer.Address, p.tlsConfig, p.quicConf)
 	if err != nil {
 		return err
