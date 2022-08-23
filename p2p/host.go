@@ -220,9 +220,9 @@ func (h *Host) listen(ctx context.Context) {
 	for {
 		msg, err := h.receive()
 		if err != nil {
-			log.Err(err).
-				Object("host", h).
-				Msg("Error while collecting a message")
+			//log.Err(err).
+			//	Object("host", h).
+			//	Msg("Error while collecting a message")
 			continue
 		}
 		trans, created := h.transactions.Put(msg)

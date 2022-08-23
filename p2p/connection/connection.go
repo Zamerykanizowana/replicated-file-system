@@ -236,6 +236,8 @@ func (c *Connection) handleErrors(err error) error {
 		return nil
 	case io.EOF:
 		closed = true
+	case context.Canceled:
+		closed = true
 	default:
 		switch e := cause.(type) {
 		case *net.OpError:
