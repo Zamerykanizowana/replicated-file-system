@@ -229,7 +229,7 @@ func (h *Host) listen(ctx context.Context) {
 		if created {
 			go func() {
 				if err = h.handleTransaction(ctx, trans); err != nil {
-					log.Err(err)
+					log.Err(err).Send()
 				}
 				h.transactions.Delete(trans.Tid)
 			}()

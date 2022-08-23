@@ -19,13 +19,13 @@ type Mirror interface {
 
 type rfsRoot struct {
 	fs.LoopbackNode
-	peer   *p2p.Host
+	host   *p2p.Host
 	mirror Mirror
 }
 
 func (r *rfsRoot) newRfsRoot(lr *fs.LoopbackRoot, p *fs.Inode, n string, st *syscall.Stat_t) fs.InodeEmbedder {
 	return &rfsRoot{
-		peer:         r.peer,
+		host:         r.host,
 		mirror:       r.mirror,
 		LoopbackNode: fs.LoopbackNode{RootData: lr}}
 }
@@ -46,7 +46,7 @@ func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 		return nil, nil, 0, PermissionDenied
 	}
 
-	if err := r.peer.Replicate(ctx, req); err != nil {
+	if err := r.host.Replicate(ctx, req); err != nil {
 		log.Err(err).
 			Object("request", req).
 			Msg("failed to create the file")
@@ -80,7 +80,7 @@ func (r *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse
 	if permitted := r.consultMirror(req); !permitted {
 		return nil, PermissionDenied
 	}
-	if err := r.peer.Replicate(ctx, req); err != nil {
+	if err := r.host.Replicate(ctx, req); err != nil {
 		log.Err(err).
 			Object("request", req).
 			Msg("failed to create directory")
@@ -97,7 +97,7 @@ func (r *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32
 	if err != nil {
 		return nil, 0, fs.ToErrno(err)
 	}
-	return NewRfsFile(f), 0, 0
+	return NewRfsFile(f, r.Path(r.Root()), r.host, r.mirror), 0, 0
 }
 
 func (r *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string,
@@ -123,7 +123,7 @@ func (r *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
 		return PermissionDenied
 	}
 
-	if err := r.peer.Replicate(ctx, req); err != nil {
+	if err := r.host.Replicate(ctx, req); err != nil {
 		log.Err(err).
 			Object("request", req).
 			Msg("failed to remove a directory")
@@ -145,7 +145,7 @@ func (r *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAtt
 		return PermissionDenied
 	}
 
-	if err := r.peer.Replicate(ctx, req); err != nil {
+	if err := r.host.Replicate(ctx, req); err != nil {
 		log.Err(err).
 			Object("request", req).
 			Msg("failed to set attributes for the file")
@@ -177,7 +177,7 @@ func (r *rfsRoot) Unlink(ctx context.Context, name string) syscall.Errno {
 		return PermissionDenied
 	}
 
-	if err := r.peer.Replicate(ctx, req); err != nil {
+	if err := r.host.Replicate(ctx, req); err != nil {
 		log.Err(err).
 			Object("request", req).
 			Msg("failed to remove a directory")

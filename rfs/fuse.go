@@ -22,7 +22,7 @@ func NewServer(c config.Config, p *p2p.Host, mirror Mirror) *Server {
 	}
 
 	root := &rfsRoot{
-		peer:   p,
+		host:   p,
 		mirror: mirror,
 	}
 

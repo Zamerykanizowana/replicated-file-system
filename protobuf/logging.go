@@ -15,7 +15,14 @@ func (m *Message) MarshalZerologObject(e *zerolog.Event) {
 
 func (r *Request) MarshalZerologObject(e *zerolog.Event) {
 	e.Stringer("type", r.Type).
-		Int("content_size", len(r.Content))
+		Int("content_size", len(r.Content)).
+		Object("metadata", r.Metadata)
+}
+
+func (m *Request_Metadata) MarshalZerologObject(e *zerolog.Event) {
+	e.Str("path", m.RelativePath).
+		Uint32("mode", m.Mode).
+		Int64("write_offset", m.WriteOffset)
 }
 
 func (r *Response) MarshalZerologObject(e *zerolog.Event) {
