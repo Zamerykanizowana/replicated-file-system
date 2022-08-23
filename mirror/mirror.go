@@ -29,6 +29,9 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 		return err
 	case protobuf.Request_LINK:
 	case protobuf.Request_MKDIR:
+		return os.Mkdir(
+			m.path(request.Metadata.RelativePath),
+			os.FileMode(request.Metadata.Mode))
 	case protobuf.Request_RENAME:
 	case protobuf.Request_RMDIR:
 	case protobuf.Request_SETATTR:
@@ -46,16 +49,16 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 
 func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 	switch request.Type {
-	case protobuf.Request_CREATE:
+	case protobuf.Request_CREATE, protobuf.Request_MKDIR:
+		// TODO extract it to a function.
 		if _, err := os.Stat(m.path(request.Metadata.RelativePath)); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				return protobuf.ACK()
 			}
 			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
 		}
-		return protobuf.NACK(protobuf.Response_ERR_ALREADY_EXISTS, errors.New("file already exists"))
+		return protobuf.NACK(protobuf.Response_ERR_ALREADY_EXISTS, errors.New("dir/file already exists"))
 	case protobuf.Request_LINK:
-	case protobuf.Request_MKDIR:
 	case protobuf.Request_RENAME:
 	case protobuf.Request_RMDIR:
 	case protobuf.Request_SETATTR:

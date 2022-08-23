@@ -191,12 +191,12 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) 
 			message := protobuf.NewResponseMessage(msg.Tid, h.Name, response)
 			log.Info().
 				Object("host", h).
-				Object("message", message).
+				Object("msg", message).
 				Msg("consulted response result")
 			if err := h.broadcast(ctx, message); err != nil {
 				log.Err(err).
 					Object("host", h).
-					Object("message", message).
+					Object("msg", message).
 					Msg("error occurred while broadcasting a response")
 			}
 		}
