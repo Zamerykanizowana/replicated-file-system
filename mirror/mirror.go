@@ -27,7 +27,8 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 			os.O_CREATE,
 			os.FileMode(request.Metadata.Mode))
 		return err
-	case protobuf.Request_LINK:
+	case protobuf.Request_SYMLINK, protobuf.Request_LINK:
+		return os.Symlink(m.path(request.Metadata.RelativePath), m.path(request.Metadata.NewRelativePath))
 	case protobuf.Request_MKDIR:
 	case protobuf.Request_RENAME:
 	case protobuf.Request_RMDIR:
@@ -35,7 +36,6 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 		return os.Chmod(
 			m.path(request.Metadata.RelativePath),
 			os.FileMode(request.Metadata.Mode))
-	case protobuf.Request_SYMLINK:
 	case protobuf.Request_UNLINK:
 	case protobuf.Request_WRITE:
 	default:
@@ -54,7 +54,8 @@ func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
 		}
 		return protobuf.NACK(protobuf.Response_ERR_ALREADY_EXISTS, errors.New("file already exists"))
-	case protobuf.Request_LINK:
+	case protobuf.Request_LINK, protobuf.Request_SYMLINK:
+		if _, err := os.Stat()
 	case protobuf.Request_MKDIR:
 	case protobuf.Request_RENAME:
 	case protobuf.Request_RMDIR:
@@ -66,13 +67,22 @@ func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
 		}
 		return protobuf.ACK()
-	case protobuf.Request_SYMLINK:
 	case protobuf.Request_UNLINK:
 	case protobuf.Request_WRITE:
 	default:
 		log.Panic().Msg("BUG: unknown protobuf.Request_Type")
 	}
 	return nil
+}
+
+func (m *Mirror) isExists(relativePath string) (bool, error) {
+	if _, err := os.Stat(m.path(relativePath)); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (m *Mirror) path(relPath string) string {
