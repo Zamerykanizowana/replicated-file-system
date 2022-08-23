@@ -67,10 +67,25 @@ func (r *rfsRoot) Link(ctx context.Context, target fs.InodeEmbedder, name string
 	return inode, fakeError
 }
 
-func (r *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode,
-	syscall.Errno) {
-
-	log.Info().Msg("error for mkdir: EAGAIN: Resource temporarily unavailable / Try again")
+func (r *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (
+	*fs.Inode, syscall.Errno,
+) {
+	req := &protobuf.Request{
+		Type: protobuf.Request_MKDIR,
+		Metadata: &protobuf.Request_Metadata{
+			RelativePath: r.relativePath(name),
+			Mode:         mode,
+		},
+	}
+	if permitted := r.consultMirror(req); !permitted {
+		return nil, PermissionDenied
+	}
+	if err := r.peer.Replicate(ctx, req); err != nil {
+		log.Err(err).
+			Object("request", req).
+			Msg("failed to create directory")
+		return nil, PermissionDenied
+	}
 
 	return r.LoopbackNode.Mkdir(ctx, name, mode, out)
 }
