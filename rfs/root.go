@@ -100,7 +100,7 @@ func (r *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
 	req := &protobuf.Request{
 		Type: protobuf.Request_RMDIR,
 		Metadata: &protobuf.Request_Metadata{
-			RelativePath: r.Path(r.Root()),
+			RelativePath: r.relativePath(name),
 		},
 	}
 
@@ -154,7 +154,7 @@ func (r *rfsRoot) Unlink(ctx context.Context, name string) syscall.Errno {
 	req := &protobuf.Request{
 		Type: protobuf.Request_UNLINK,
 		Metadata: &protobuf.Request_Metadata{
-			RelativePath: r.Path(r.Root()),
+			RelativePath: r.relativePath(name),
 		},
 	}
 
