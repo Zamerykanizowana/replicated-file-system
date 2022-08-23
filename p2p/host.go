@@ -5,8 +5,8 @@ import (
 	_ "embed"
 
 	"github.com/google/uuid"
-
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 
@@ -83,6 +83,7 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 
 	detected, greenLight := h.conflicts.DetectAndResolveConflict(h.transactions, message)
 	if detected && !greenLight {
+		h.conflicts.IncrementClock()
 		return ErrTransactionConflict
 	}
 
@@ -98,13 +99,48 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 
 	for i := 0; i < sentMessagesCount; i++ {
 		msg := <-trans.NotifyChan
-		log.Info().Object("msg", msg).Msg("message received")
+		log.Info().
+			Object("host", h).
+			Object("msg", msg).
+			Msg("message received")
 	}
 
+	return h.processResponses(trans)
+}
+
+func (h *Host) processResponses(trans *Transaction) error {
+	errorsCtr := map[protobuf.Response_Error]uint{
+		protobuf.Response_ERR_UNKNOWN:              0,
+		protobuf.Response_ERR_ALREADY_EXISTS:       0,
+		protobuf.Response_ERR_DOES_NOT_EXIST:       0,
+		protobuf.Response_ERR_TRANSACTION_CONFLICT: 0,
+	}
+	var rejected bool
 	for _, resp := range trans.Responses {
 		if resp.Type == protobuf.Response_NACK {
-			return ErrNotPermitted
+			errorsCtr[*resp.Error]++
+			rejected = true
 		}
+	}
+	logDict := zerolog.Dict()
+	var otherErrors uint
+	for respErr, count := range errorsCtr {
+		logDict.Uint(respErr.String(), count)
+		if respErr == protobuf.Response_ERR_TRANSACTION_CONFLICT {
+			continue
+		}
+		otherErrors += count
+	}
+	// If the only error we encountered was protobuf.Response_ERR_TRANSACTION_CONFLICT.
+	if errorsCtr[protobuf.Response_ERR_TRANSACTION_CONFLICT] > 0 && otherErrors == 0 {
+		h.conflicts.IncrementClock()
+	}
+	if rejected {
+		log.Debug().
+			Object("host", h).
+			Dict("errors_count", logDict).
+			Msg("transaction was rejected")
+		return ErrNotPermitted
 	}
 	return nil
 }
@@ -136,7 +172,10 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) 
 	for range h.peers {
 		msg := <-transaction.NotifyChan
 
-		log.Info().Object("msg", msg).Msg("message received")
+		log.Info().
+			Object("host", h).
+			Object("msg", msg).
+			Msg("message received")
 
 		if request := msg.GetRequest(); request != nil {
 			response := h.mirror.Consult(request)
@@ -150,9 +189,15 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) 
 			}
 			ourResponse = response.Type
 			message := protobuf.NewResponseMessage(msg.Tid, h.Name, response)
-			log.Info().Object("message", message).Msg("consulted response result")
+			log.Info().
+				Object("host", h).
+				Object("message", message).
+				Msg("consulted response result")
 			if err := h.broadcast(ctx, message); err != nil {
-				log.Err(err).Object("message", message).Msg("error occurred while broadcasting a response")
+				log.Err(err).
+					Object("host", h).
+					Object("message", message).
+					Msg("error occurred while broadcasting a response")
 			}
 		}
 	}
@@ -175,7 +220,9 @@ func (h *Host) listen(ctx context.Context) {
 	for {
 		msg, err := h.receive()
 		if err != nil {
-			log.Err(err).Msg("Error while collecting a message")
+			log.Err(err).
+				Object("host", h).
+				Msg("Error while collecting a message")
 			continue
 		}
 		trans, created := h.transactions.Put(msg)
