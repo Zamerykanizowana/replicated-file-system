@@ -83,6 +83,7 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 
 	detected, greenLight := h.conflicts.DetectAndResolveConflict(h.transactions, message)
 	if detected && !greenLight {
+		h.conflicts.IncrementClock()
 		return ErrTransactionConflict
 	}
 
@@ -122,17 +123,16 @@ func (h *Host) processResponses(trans *Transaction) error {
 		}
 	}
 	logDict := zerolog.Dict()
-	var transactionErrors, otherErrors uint
+	var otherErrors uint
 	for respErr, count := range errorsCtr {
 		logDict.Uint(respErr.String(), count)
 		if respErr == protobuf.Response_ERR_TRANSACTION_CONFLICT {
-			transactionErrors = count
 			continue
 		}
-		otherErrors = count
+		otherErrors += count
 	}
 	// If the only error we encountered was protobuf.Response_ERR_TRANSACTION_CONFLICT.
-	if transactionErrors > 0 && otherErrors == 0 {
+	if errorsCtr[protobuf.Response_ERR_TRANSACTION_CONFLICT] > 0 && otherErrors == 0 {
 		h.conflicts.IncrementClock()
 	}
 	if rejected {

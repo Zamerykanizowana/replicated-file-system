@@ -214,8 +214,8 @@ func TestHost_ConflictsResolving(t *testing.T) {
 	wg.Add(3)
 
 	go send(Gimli, true)
-	go send(Aragorn, false)
 	go send(Legolas, false)
+	go send(Aragorn, false)
 
 	wg.Wait()
 
