@@ -58,6 +58,16 @@ func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 	case protobuf.Request_MKDIR:
 	case protobuf.Request_RENAME:
 	case protobuf.Request_RMDIR:
+		if pathInfo, err := os.Stat(m.path(request.Metadata.RelativePath)); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return protobuf.NACK(protobuf.Response_ERR_DOES_NOT_EXIST, err)
+			}
+
+			if !pathInfo.IsDir() {
+				return protobuf.NACK(protobuf.Response_ERR_NOT_A_DIRECTORY, nil)
+			}
+			return protobuf.ACK()
+		}
 	case protobuf.Request_SETATTR:
 		if _, err := os.Stat(m.path(request.Metadata.RelativePath)); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
