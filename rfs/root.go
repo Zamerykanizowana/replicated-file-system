@@ -13,14 +13,20 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type Mirror interface {
+	Consult(request *protobuf.Request) *protobuf.Response
+}
+
 type rfsRoot struct {
 	fs.LoopbackNode
-	peer *p2p.Host
+	peer   *p2p.Host
+	mirror Mirror
 }
 
 func (r *rfsRoot) newRfsRoot(lr *fs.LoopbackRoot, p *fs.Inode, n string, st *syscall.Stat_t) fs.InodeEmbedder {
 	return &rfsRoot{
 		peer:         r.peer,
+		mirror:       r.mirror,
 		LoopbackNode: fs.LoopbackNode{RootData: lr}}
 }
 
@@ -36,6 +42,10 @@ func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 			Mode:         mode,
 		},
 	}
+	if permitted := r.consultMirror(req); !permitted {
+		return nil, nil, 0, PermissionDenied
+	}
+
 	if err := r.peer.Replicate(ctx, req); err != nil {
 		log.Err(err).
 			Object("request", req).
@@ -59,13 +69,10 @@ func (r *rfsRoot) Link(ctx context.Context, target fs.InodeEmbedder, name string
 
 func (r *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode,
 	syscall.Errno) {
-	inode, _ := r.LoopbackNode.Mkdir(ctx, name, mode, out)
-
-	fakeError := syscall.EAGAIN
 
 	log.Info().Msg("error for mkdir: EAGAIN: Resource temporarily unavailable / Try again")
 
-	return inode, fakeError
+	return r.LoopbackNode.Mkdir(ctx, name, mode, out)
 }
 
 func (r *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
@@ -75,11 +82,7 @@ func (r *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32
 	if err != nil {
 		return nil, 0, fs.ToErrno(err)
 	}
-	lf := NewRfsFile(f)
-
-	log.Info().Msg("Hello from custom Open func")
-
-	return lf, 0, 0
+	return NewRfsFile(f), 0, 0
 }
 
 func (r *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string,
@@ -104,13 +107,25 @@ func (r *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
 }
 
 func (r *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
-	_ = r.LoopbackNode.Setattr(ctx, fh, in, out)
+	req := &protobuf.Request{
+		Type: protobuf.Request_SETATTR,
+		Metadata: &protobuf.Request_Metadata{
+			RelativePath: r.Path(r.Root()),
+			Mode:         in.Mode,
+		},
+	}
+	if permitted := r.consultMirror(req); !permitted {
+		return PermissionDenied
+	}
 
-	fakeError := syscall.ENOSYS
+	if err := r.peer.Replicate(ctx, req); err != nil {
+		log.Err(err).
+			Object("request", req).
+			Msg("failed to set attributes for the file")
+		return PermissionDenied
+	}
 
-	log.Info().Msg("error for setattr: ENOSYS: Function not implemented")
-
-	return fakeError
+	return r.LoopbackNode.Setattr(ctx, fh, in, out)
 }
 
 func (r *rfsRoot) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
@@ -147,4 +162,11 @@ func (r *rfsRoot) CopyFileRange(ctx context.Context, fhIn fs.FileHandle,
 
 func (r *rfsRoot) relativePath(name string) string {
 	return filepath.Join(r.Path(r.Root()), name)
+}
+
+func (r *rfsRoot) consultMirror(req *protobuf.Request) (permitted bool) {
+	if typ := r.mirror.Consult(req).GetType(); typ == protobuf.Response_ACK {
+		permitted = true
+	}
+	return
 }

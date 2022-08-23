@@ -52,12 +52,14 @@ type (
 	}
 	// Status informs about the connection state, If the net.Conn is established and running
 	// it will hold StatusAlive, otherwise StatusDead.
+	// StatusShutdown is only set during shutdown, to prevent accepting new connections.
 	Status uint8
 )
 
 const (
 	StatusDead Status = iota
 	StatusAlive
+	StatusShutdown
 )
 
 func (c Status) String() string {
@@ -66,6 +68,8 @@ func (c Status) String() string {
 		return "alive"
 	case StatusDead:
 		return "dead"
+	case StatusShutdown:
+		return "shutdown"
 	default:
 		return "unspecified"
 	}
