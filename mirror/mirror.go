@@ -3,6 +3,7 @@ package mirror
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -47,15 +48,28 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 	switch request.Type {
 	case protobuf.Request_CREATE:
-		if _, err := os.Stat(m.path(request.Metadata.RelativePath)); err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				return protobuf.ACK()
-			}
+		exists, err := m.isExists(request.Metadata.RelativePath)
+		if err != nil {
 			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
 		}
-		return protobuf.NACK(protobuf.Response_ERR_ALREADY_EXISTS, errors.New("file already exists"))
+		if exists {
+			return protobuf.NACK(protobuf.Response_ERR_ALREADY_EXISTS, errors.New("file already exists"))
+		}
+		return protobuf.ACK()
 	case protobuf.Request_LINK, protobuf.Request_SYMLINK:
-		if _, err := os.Stat()
+		oldExists, err := m.isExists(request.Metadata.RelativePath)
+		if err != nil {
+			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
+		}
+		newExists, err := m.isExists(request.Metadata.NewRelativePath)
+		if err != nil {
+			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
+		}
+		if oldExists && !newExists {
+			return protobuf.ACK()
+		}
+		return protobuf.NACK(protobuf.Response_ERR_ALREADY_EXISTS, errors.New("oldRelativePath is "+strconv.
+			FormatBool(oldExists)+", newRelativePath is "+strconv.FormatBool(newExists)))
 	case protobuf.Request_MKDIR:
 	case protobuf.Request_RENAME:
 	case protobuf.Request_RMDIR:
@@ -80,7 +94,7 @@ func (m *Mirror) isExists(relativePath string) (bool, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
-		return false, err
+		return true, err
 	}
 	return true, nil
 }
