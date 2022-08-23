@@ -104,7 +104,7 @@ func (p *Pool) Run(ctx context.Context) {
 func (p *Pool) Close() {
 	log.Info().Object("host", p.host).Msg("Closing all network connections")
 	p.closed.Store(true)
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(10 * time.Millisecond)
 	for {
 		<-ticker.C
 		if p.activeConnectionHandlers.Load() == 0 {
@@ -116,12 +116,14 @@ func (p *Pool) Close() {
 	}
 }
 
-func (p *Pool) addConnectionHandler() {
+var errPoolClosed = errors.New("pool is being shutdown")
+
+func (p *Pool) addConnectionHandler() error {
 	p.activeConnectionHandlers.Add(1)
 	if p.closed.Load() {
-		// Sleep forever essentially, until the process is closed for good.
-		time.Sleep(365 * time.Hour)
+		return errPoolClosed
 	}
+	return nil
 }
 
 func (p *Pool) removeConnectionHandler() {
@@ -177,7 +179,9 @@ func (p *Pool) acceptConnections(ctx context.Context) {
 			log.Err(err).Object("host", p.host).Msg("failed to accept incoming connection")
 			continue
 		}
-		p.addConnectionHandler()
+		if err = p.addConnectionHandler(); err != nil {
+			return
+		}
 		go func() {
 			ctx, cancel := contextWithOptionalTimeout(ctx, p.handshakeTimeout)
 			defer cancel()
@@ -219,6 +223,9 @@ func (p *Pool) dial(ctx context.Context, c *Connection) {
 			}
 		}
 		if err = p.dialOnce(c); err != nil {
+			if err == errPoolClosed {
+				return
+			}
 			backoff.Next()
 			log.Ctx(ctx).Debug().Err(err).
 				Object("host", p.host).
@@ -236,7 +243,9 @@ func (p *Pool) dial(ctx context.Context, c *Connection) {
 func (p *Pool) dialOnce(c *Connection) error {
 	ctx, cancel := contextWithOptionalTimeout(context.Background(), p.handshakeTimeout)
 	defer cancel()
-	p.addConnectionHandler()
+	if err := p.addConnectionHandler(); err != nil {
+		return err
+	}
 	defer p.removeConnectionHandler()
 	conn, err := p.dialFunc(ctx, c.peer.Address, p.tlsConfig, p.quicConf)
 	if err != nil {
