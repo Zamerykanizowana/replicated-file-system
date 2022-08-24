@@ -119,8 +119,6 @@ func TestHost_Reconnection(t *testing.T) {
 	_ = Aragorn.Close()
 
 	for i := 0; i < 10; i++ {
-		Aragorn = hostStructForName(t, AragornsName)
-		Legolas = hostStructForName(t, LegolasName)
 		Aragorn.Run(ctx)
 		Legolas.Run(ctx)
 
@@ -130,8 +128,6 @@ func TestHost_Reconnection(t *testing.T) {
 		_ = Legolas.Close()
 	}
 
-	Aragorn = hostStructForName(t, AragornsName)
-	Legolas = hostStructForName(t, LegolasName)
 	Aragorn.Run(ctx)
 	Legolas.Run(ctx)
 

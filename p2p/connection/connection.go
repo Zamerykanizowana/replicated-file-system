@@ -143,7 +143,9 @@ func (c *Connection) watchConnection(conn quic.Connection) {
 func (c *Connection) Listen(ctx context.Context) {
 	for {
 		if c.status == StatusDead {
-			c.WaitForOpen()
+			if err := c.WaitForOpen(ctx); err != nil {
+				return
+			}
 		}
 		data, err := c.Recv(ctx)
 		if err != nil {
@@ -186,9 +188,13 @@ func (c *Connection) Status() Status {
 }
 
 // WaitForOpen blocks until the Connection Status changes to StatusAlive.
-func (c *Connection) WaitForOpen() {
-	<-c.openNotify
-	return
+func (c *Connection) WaitForOpen(ctx context.Context) error {
+	select {
+	case <-c.openNotify:
+		return nil
+	case <-ctx.Done():
+		return errPoolClosed
+	}
 }
 
 // Close closes the underlying net.Conn and sets Connection Status to StatusDead.
