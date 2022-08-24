@@ -104,9 +104,7 @@ func TestHost_Reconnection(t *testing.T) {
 
 	time.Sleep(time.Second)
 
-	wg := sync.WaitGroup{}
 	send := func() {
-		defer wg.Done()
 		require.NoError(t, Aragorn.Replicate(ctx, &protobuf.Request{
 			Type:     protobuf.Request_CREATE,
 			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere/else", Mode: 0666},
@@ -115,9 +113,7 @@ func TestHost_Reconnection(t *testing.T) {
 			"Aragorn failed to send message")
 	}
 
-	wg.Add(1)
 	send()
-	wg.Wait()
 
 	_ = Legolas.Close()
 	_ = Aragorn.Close()
@@ -126,7 +122,7 @@ func TestHost_Reconnection(t *testing.T) {
 		Aragorn.Run(ctx)
 		Legolas.Run(ctx)
 
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 
 		_ = Aragorn.Close()
 		_ = Legolas.Close()
@@ -135,11 +131,9 @@ func TestHost_Reconnection(t *testing.T) {
 	Aragorn.Run(ctx)
 	Legolas.Run(ctx)
 
-	time.Sleep(time.Second)
+	time.Sleep(1 * time.Second)
 
-	wg.Add(1)
 	send()
-	wg.Wait()
 }
 
 func TestHost_ConflictsResolving(t *testing.T) {

@@ -46,11 +46,6 @@ func NewPool(
 	quicConf := quicConfig(p.handshakeTimeout)
 	p.quicConf = quicConf
 
-	var err error
-	p.listener, err = quic.ListenAddr(host.Address, tlsConf, quicConf)
-	if err != nil {
-		log.Fatal().Err(err).Object("host", host).Msg("failed to create TLS listener")
-	}
 	p.dialFunc = quic.DialAddrContext
 
 	return p
@@ -83,6 +78,8 @@ type (
 		activeConnectionHandlers atomic.Int64
 		// closed informs whether the pool was closed.
 		closed atomic.Bool
+		// cancelFunc should be called during shutdown to speed up the process of closing the Pool.
+		cancelFunc context.CancelFunc
 	}
 	// message allows passing errors along with data through channels.
 	message struct {
@@ -96,6 +93,13 @@ type (
 // Run has to be called once per Pool.
 // There's no need to run it in a separate routine.
 func (p *Pool) Run(ctx context.Context) {
+	p.closed.Store(false)
+	ctx, p.cancelFunc = context.WithCancel(ctx)
+	var err error
+	p.listener, err = quic.ListenAddr(p.host.Address, p.tlsConfig, p.quicConf)
+	if err != nil {
+		log.Fatal().Err(err).Object("host", p.host).Msg("failed to create QUIC listener")
+	}
 	go p.listen(ctx)
 	go p.dialAll(ctx)
 }
@@ -103,7 +107,12 @@ func (p *Pool) Run(ctx context.Context) {
 // Close attempts to gracefully close all connections in a blocking manner.
 func (p *Pool) Close() {
 	log.Info().Object("host", p.host).Msg("Closing all network connections")
+	log.Debug().Object("host", p.host).
+		Msg("waiting for all active connection handlers to return")
 	p.closed.Store(true)
+	if p.cancelFunc != nil {
+		p.cancelFunc()
+	}
 	ticker := time.NewTicker(10 * time.Millisecond)
 	for {
 		<-ticker.C
@@ -111,8 +120,12 @@ func (p *Pool) Close() {
 			break
 		}
 	}
+	if err := p.listener.Close(); err != nil {
+		log.Err(err).Msg("failed to close QUIC listener")
+	}
+	log.Debug().Object("host", p.host).Msg("closing all connections")
 	for _, conn := range p.pool {
-		closeConn(conn.conn, connErrClosed)
+		conn.Close(connErrClosed)
 	}
 }
 
@@ -175,20 +188,23 @@ func (p *Pool) listen(ctx context.Context) {
 func (p *Pool) acceptConnections(ctx context.Context) {
 	for {
 		conn, err := p.listener.Accept(ctx)
+		if errClosed := p.addConnectionHandler(); errClosed != nil {
+			closeConn(conn, connErrClosed)
+			p.removeConnectionHandler()
+			return
+		}
 		if err != nil {
+			p.removeConnectionHandler()
 			log.Err(err).Object("host", p.host).Msg("failed to accept incoming connection")
 			continue
 		}
-		if err = p.addConnectionHandler(); err != nil {
-			return
-		}
 		go func() {
+			defer p.removeConnectionHandler()
 			ctx, cancel := contextWithOptionalTimeout(ctx, p.handshakeTimeout)
 			defer cancel()
 			if err = p.add(ctx, Server, conn); err != nil {
 				log.Debug().Err(err).Object("host", p.host).Send()
 			}
-			p.removeConnectionHandler()
 		}()
 	}
 }
@@ -222,7 +238,7 @@ func (p *Pool) dial(ctx context.Context, c *Connection) {
 				}
 			}
 		}
-		if err = p.dialOnce(c); err != nil {
+		if err = p.dialOnce(ctx, c); err != nil {
 			if err == errPoolClosed {
 				return
 			}
@@ -240,13 +256,13 @@ func (p *Pool) dial(ctx context.Context, c *Connection) {
 // dialOnce performs a single dial attempt.
 // It blocks when the connection was already established and
 // waits for it to be closed to make its attempt.
-func (p *Pool) dialOnce(c *Connection) error {
-	ctx, cancel := contextWithOptionalTimeout(context.Background(), p.handshakeTimeout)
+func (p *Pool) dialOnce(ctx context.Context, c *Connection) error {
+	ctx, cancel := contextWithOptionalTimeout(ctx, p.handshakeTimeout)
 	defer cancel()
+	defer p.removeConnectionHandler()
 	if err := p.addConnectionHandler(); err != nil {
 		return err
 	}
-	defer p.removeConnectionHandler()
 	conn, err := p.dialFunc(ctx, c.peer.Address, p.tlsConfig, p.quicConf)
 	if err != nil {
 		return err

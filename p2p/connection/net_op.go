@@ -107,7 +107,7 @@ func send(ctx context.Context, op uniStreamOpener, data []byte) error {
 	}()
 
 	if err := selectResult(ctx, errCh, done); err != nil {
-		if sErr, ok := errors.Cause(err).(streamErr); ok {
+		if sErr, ok := errors.Cause(err).(streamErr); ok && stream != nil {
 			stream.CancelWrite(quic.StreamErrorCode(sErr))
 		}
 		return err
