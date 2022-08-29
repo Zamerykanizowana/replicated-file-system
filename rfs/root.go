@@ -34,6 +34,7 @@ const PermissionDenied = syscall.EPERM
 
 func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode uint32,
 	out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
+	log.Info().Uint32("mode", mode).Msg("creating a file")
 
 	req := &protobuf.Request{
 		Type: protobuf.Request_CREATE,
