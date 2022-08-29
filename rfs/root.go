@@ -200,6 +200,10 @@ func (r *rfsRoot) CopyFileRange(ctx context.Context, fhIn fs.FileHandle,
 	return fflags, fakeError
 }
 
+func (r *rfsRoot) physicalPath() string {
+	return filepath.Join(r.RootData.Path, r.relativePath(""))
+}
+
 func (r *rfsRoot) relativePath(name string) string {
 	return filepath.Join(r.Path(r.Root()), name)
 }
