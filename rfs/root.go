@@ -135,25 +135,35 @@ func (r *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
 }
 
 func (r *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
-	req := &protobuf.Request{
-		Type: protobuf.Request_SETATTR,
-		Metadata: &protobuf.Request_Metadata{
-			RelativePath: r.Path(r.Root()),
-			Mode:         in.Mode,
-		},
-	}
-	if permitted := r.consultMirror(req); !permitted {
-		return PermissionDenied
+	if mode, ok := in.GetMode(); ok {
+		req := &protobuf.Request{
+			Type: protobuf.Request_SETATTR,
+			Metadata: &protobuf.Request_Metadata{
+				RelativePath: r.Path(r.Root()),
+				Mode:         mode,
+			},
+		}
+		if permitted := r.consultMirror(req); !permitted {
+			return PermissionDenied
+		}
+
+		if err := r.host.Replicate(ctx, req); err != nil {
+			log.Err(err).
+				Object("request", req).
+				Msg("failed to set attributes for the file")
+			return PermissionDenied
+		}
+
+		p := r.physicalPath()
+
+		log.Info().Uint32("mode", mode).Str("physical_path", p)
+
+		if err := syscall.Chmod(p, mode); err != nil {
+			return fs.ToErrno(err)
+		}
 	}
 
-	if err := r.host.Replicate(ctx, req); err != nil {
-		log.Err(err).
-			Object("request", req).
-			Msg("failed to set attributes for the file")
-		return PermissionDenied
-	}
-
-	return r.LoopbackNode.Setattr(ctx, fh, in, out)
+	return fs.OK
 }
 
 func (r *rfsRoot) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
