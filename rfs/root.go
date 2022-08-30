@@ -34,7 +34,12 @@ const PermissionDenied = syscall.EPERM
 
 func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode uint32,
 	out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
-	log.Info().Uint32("mode", mode).Msg("creating a file")
+	p := r.physicalPath(name)
+
+	log.Info().
+		Uint32("mode", mode).
+		Str("path", p).
+		Msg("creating a file")
 
 	req := &protobuf.Request{
 		Type: protobuf.Request_CREATE,
@@ -154,7 +159,8 @@ func (r *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAtt
 			return PermissionDenied
 		}
 
-		p := r.physicalPath()
+		// No name as we're operating on the existing node (can't go deeper).
+		p := r.physicalPath("")
 
 		log.Info().Uint32("mode", mode).Str("physical_path", p)
 
@@ -210,8 +216,8 @@ func (r *rfsRoot) CopyFileRange(ctx context.Context, fhIn fs.FileHandle,
 	return fflags, fakeError
 }
 
-func (r *rfsRoot) physicalPath() string {
-	return filepath.Join(r.RootData.Path, r.relativePath(""))
+func (r *rfsRoot) physicalPath(name string) string {
+	return filepath.Join(r.RootData.Path, r.relativePath(name))
 }
 
 func (r *rfsRoot) relativePath(name string) string {
