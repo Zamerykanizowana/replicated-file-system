@@ -233,8 +233,9 @@ func (r *rfsRoot) consultMirror(req *protobuf.Request) (permitted bool) {
 
 // idFromStat is a rip-off from go-fuse's loopback.go.
 func (r *rfsRoot) idFromStat(st *syscall.Stat_t) fs.StableAttr {
+	dev := r.LoopbackNode.RootData.Dev
 	swapped := (uint64(st.Dev) << 32) | (uint64(st.Dev) >> 32)
-	swappedRootDev := (r.Dev << 32) | (r.Dev >> 32)
+	swappedRootDev := (dev << 32) | (dev >> 32)
 	return fs.StableAttr{
 		Mode: uint32(st.Mode),
 		Gen:  1,
