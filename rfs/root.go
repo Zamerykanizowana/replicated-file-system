@@ -2,6 +2,7 @@ package rfs
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"syscall"
 
@@ -59,7 +60,24 @@ func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 		return nil, nil, 0, PermissionDenied
 	}
 
-	return r.LoopbackNode.Create(ctx, name, flags, mode, out)
+	flags = flags &^ syscall.O_APPEND
+	fd, err := syscall.Open(p, int(flags)|os.O_CREATE, mode)
+	if err != nil {
+		return nil, nil, 0, fs.ToErrno(err)
+	}
+
+	st := syscall.Stat_t{}
+	if err := syscall.Fstat(fd, &st); err != nil {
+		syscall.Close(fd)
+		return nil, nil, 0, fs.ToErrno(err)
+	}
+
+	node := r.RootData.NewNode(r.RootData, r.EmbeddedInode(), name, &st)
+	ch := r.NewInode(ctx, node, r.idFromStat(&st))
+	lf := NewRfsFile(fd, name, r.host, r.mirror)
+
+	out.FromStat(&st)
+	return ch, lf, 0, 0
 }
 
 // Link is for hard link, not for symlink
