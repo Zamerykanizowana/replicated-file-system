@@ -66,3 +66,12 @@ func (f *rfsFile) Write(ctx context.Context, data []byte, off int64) (written ui
 
 	return f.loopbackFile.Write(ctx, data, off)
 }
+
+func (f *rfsFile) Lseek(ctx context.Context, off uint64, whence uint32) (uint64, syscall.Errno) {
+	log.Info().
+		Str("path", f.path).
+		Uint64("offset", off).
+		Uint32("whence", whence).
+		Msg("running lseek")
+	return f.loopbackFile.Lseek(ctx, off, whence)
+}
