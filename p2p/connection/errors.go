@@ -7,19 +7,20 @@ import (
 	"github.com/lucas-clemente/quic-go"
 )
 
-type SendMultiErr struct {
+// BroadcastMultiErr aggregates errors from Broadcast.
+type BroadcastMultiErr struct {
 	errs map[peerName]error
 	mu   sync.Mutex
 }
 
-func (s *SendMultiErr) Errors() map[peerName]error {
-	return s.errs
+func (e *BroadcastMultiErr) Errors() map[peerName]error {
+	return e.errs
 }
 
-func (s *SendMultiErr) Error() string {
+func (e *BroadcastMultiErr) Error() string {
 	b := strings.Builder{}
 	b.WriteString("sending errors: ")
-	for peerAddr, err := range s.errs {
+	for peerAddr, err := range e.errs {
 		b.WriteString(peerAddr)
 		b.WriteString(" > ")
 		b.WriteString(err.Error())
@@ -28,17 +29,17 @@ func (s *SendMultiErr) Error() string {
 	return b.String()[:b.Len()-2]
 }
 
-func (s *SendMultiErr) Append(peer string, err error) {
-	s.mu.Lock()
-	if s.errs == nil {
-		s.errs = make(map[peerName]error)
+func (e *BroadcastMultiErr) Append(peer string, err error) {
+	e.mu.Lock()
+	if e.errs == nil {
+		e.errs = make(map[peerName]error)
 	}
-	s.errs[peer] = err
-	s.mu.Unlock()
+	e.errs[peer] = err
+	e.mu.Unlock()
 }
 
-func (s *SendMultiErr) Empty() bool {
-	return len(s.errs) == 0
+func (e *BroadcastMultiErr) Empty() bool {
+	return len(e.errs) == 0
 }
 
 // streamErr represents common quic.Stream errors with a meaningful message.

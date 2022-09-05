@@ -5,12 +5,22 @@ skin rose
 
 header P2P Connection - perspective resolving
 
-participant Host
-participant Peer
+participant "Peer (client)" as Peer
+participant "Host (server)" as Host
 
 autonumber
 
-Host --> Peer: Dial
-Peer --> Host: Dial
+Peer -> Host ++ : Dial
+group Accept connection
+    Host --> Peer: Send perspective resolvent
+    Peer --> Host: Send perspective resolvent
+    alt Perspective was resolved
+        Host -> Host: Assign QUIC connection to the\nConnection struct associated with the Peer
+    else Perspective was not resolved
+        Host -> Peer: Close QUIC connection\nconnErrNotResolved
+    else the connection was already established
+        Host -> Peer: Close QUIC connection\nconnErrAlreadyEstablished
+    end
+end
 
 @enduml

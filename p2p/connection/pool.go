@@ -30,20 +30,20 @@ func NewPool(
 	}
 
 	p := &Pool{
-		host:              host,
-		net:               connConf.Network,
-		whitelist:         whitelist,
-		pool:              cs,
-		msgs:              msgs,
-		dialBackoffConfig: &connConf.DialBackoff,
-		handshakeTimeout:  connConf.HandshakeTimeout,
+		host:                          host,
+		net:                           connConf.Network,
+		whitelist:                     whitelist,
+		pool:                          cs,
+		msgs:                          msgs,
+		dialBackoffConfig:             &connConf.DialBackoff,
+		connectionEstablishingTimeout: connConf.HandshakeTimeout,
 	}
 
 	tlsConf.VerifyConnection = p.VerifyConnection
 	tlsConf.NextProtos = []string{Protocol}
 	p.tlsConfig = tlsConf
 
-	quicConf := quicConfig(p.handshakeTimeout)
+	quicConf := quicConfig(p.connectionEstablishingTimeout)
 	p.quicConf = quicConf
 
 	p.dialFunc = quic.DialAddrContext
@@ -71,8 +71,8 @@ type (
 		// msgs is a buffered channel onto which each Connection.Send publishes message.
 		msgs              chan message
 		dialBackoffConfig *config.Backoff
-		// TODO correct naming here!
-		handshakeTimeout time.Duration
+		// connectionEstablishingTimeout sets the timeout for both dialed and accepted connections handling.
+		connectionEstablishingTimeout time.Duration
 		// activeConnectionHandlers keeps the count of all accepted and dialed connections which
 		// have not been verified yet.
 		activeConnectionHandlers atomic.Int64
@@ -104,7 +104,9 @@ func (p *Pool) Run(ctx context.Context) {
 	go p.dialAll(ctx)
 }
 
-// Close attempts to gracefully close all connections in a blocking manner.
+// Close attempts to gracefully close all connections in a blocking manner,
+// while blocking new connections until the the listener is closed and dial routines
+// for each of the peers were closed.
 func (p *Pool) Close() {
 	log.Info().Object("host", p.host).Msg("Closing all network connections")
 	log.Debug().Object("host", p.host).
@@ -131,6 +133,7 @@ func (p *Pool) Close() {
 
 var errPoolClosed = errors.New("pool is being shutdown")
 
+// addConnectionHandler increments the active connection handlers count by 1.
 func (p *Pool) addConnectionHandler() error {
 	p.activeConnectionHandlers.Add(1)
 	if p.closed.Load() {
@@ -139,6 +142,8 @@ func (p *Pool) addConnectionHandler() error {
 	return nil
 }
 
+// addConnectionHandler decrements the active connection handlers count by 1.
+// Once the connection is either established or rejected this method must be called.
 func (p *Pool) removeConnectionHandler() {
 	p.activeConnectionHandlers.Add(-1)
 }
@@ -147,7 +152,7 @@ func (p *Pool) removeConnectionHandler() {
 // and waits for all of them to finish.
 func (p *Pool) Broadcast(ctx context.Context, data []byte) error {
 	var (
-		mErr = &SendMultiErr{}
+		mErr = &BroadcastMultiErr{}
 		wg   sync.WaitGroup
 	)
 	wg.Add(len(p.pool))
@@ -200,7 +205,7 @@ func (p *Pool) acceptConnections(ctx context.Context) {
 		}
 		go func() {
 			defer p.removeConnectionHandler()
-			ctx, cancel := contextWithOptionalTimeout(ctx, p.handshakeTimeout)
+			ctx, cancel := contextWithOptionalTimeout(ctx, p.connectionEstablishingTimeout)
 			defer cancel()
 			if err = p.add(ctx, Server, conn); err != nil {
 				log.Debug().Err(err).Object("host", p.host).Send()
@@ -257,7 +262,7 @@ func (p *Pool) dial(ctx context.Context, c *Connection) {
 // It blocks when the connection was already established and
 // waits for it to be closed to make its attempt.
 func (p *Pool) dialOnce(ctx context.Context, c *Connection) error {
-	ctx, cancel := contextWithOptionalTimeout(ctx, p.handshakeTimeout)
+	ctx, cancel := contextWithOptionalTimeout(ctx, p.connectionEstablishingTimeout)
 	defer cancel()
 	defer p.removeConnectionHandler()
 	if err := p.addConnectionHandler(); err != nil {

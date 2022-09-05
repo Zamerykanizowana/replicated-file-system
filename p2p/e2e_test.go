@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"embed"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -46,8 +47,11 @@ func TestMain(m *testing.M) {
 
 func TestHost_ReplicateSingleOperation(t *testing.T) {
 	Aragorn := hostStructForName(t, AragornsName)
+	defer mustClose(t, Aragorn)
 	Gimli := hostStructForName(t, GimlisName)
+	defer mustClose(t, Gimli)
 	Legolas := hostStructForName(t, LegolasName)
+	defer mustClose(t, Legolas)
 
 	ctx := context.Background()
 	Aragorn.Run(ctx)
@@ -94,8 +98,11 @@ func TestHost_ReplicateSingleOperation(t *testing.T) {
 
 func TestHost_Reconnection(t *testing.T) {
 	Aragorn := hostStructForName(t, AragornsName)
+	defer mustClose(t, Aragorn)
 	Gimli := hostStructForName(t, GimlisName)
+	defer mustClose(t, Gimli)
 	Legolas := hostStructForName(t, LegolasName)
+	defer mustClose(t, Legolas)
 
 	ctx := context.Background()
 	Gimli.Run(ctx)
@@ -138,8 +145,11 @@ func TestHost_Reconnection(t *testing.T) {
 
 func TestHost_ConflictsResolving(t *testing.T) {
 	Aragorn := hostStructForName(t, AragornsName)
+	defer mustClose(t, Aragorn)
 	Gimli := hostStructForName(t, GimlisName)
+	defer mustClose(t, Gimli)
 	Legolas := hostStructForName(t, LegolasName)
+	defer mustClose(t, Legolas)
 
 	ctx := context.Background()
 	Gimli.Run(ctx)
@@ -233,6 +243,10 @@ func hostStructForName(t *testing.T, name string) *Host {
 			&conf.Connection,
 			testTLSConf(t, name)),
 	}
+}
+
+func mustClose(t *testing.T, closer io.Closer) {
+	require.NoError(t, closer.Close())
 }
 
 //go:embed test_data/certs

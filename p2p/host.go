@@ -90,7 +90,7 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 
 	sentMessagesCount := len(h.peers)
 	if err = h.broadcast(ctx, message); err != nil {
-		if sendErr, ok := err.(*connection.SendMultiErr); ok && len(sendErr.Errors()) == len(h.peers) {
+		if sendErr, ok := err.(*connection.BroadcastMultiErr); ok && len(sendErr.Errors()) == len(h.peers) {
 			return err
 		} else {
 			sentMessagesCount = len(h.peers) - len(sendErr.Errors())
