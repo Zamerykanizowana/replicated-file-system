@@ -42,7 +42,10 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 			m.path(request.Metadata.RelativePath),
 			os.FileMode(request.Metadata.Mode))
 	case protobuf.Request_WRITE:
-		f, err := os.OpenFile(m.path(request.Metadata.RelativePath), os.O_WRONLY, 0)
+		f, err := os.OpenFile(
+			m.path(request.Metadata.RelativePath),
+			os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
+			0)
 		if err != nil {
 			return err
 		}

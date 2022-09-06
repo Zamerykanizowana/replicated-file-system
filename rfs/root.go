@@ -2,6 +2,7 @@ package rfs
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"syscall"
 
@@ -34,6 +35,12 @@ const PermissionDenied = syscall.EPERM
 
 func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode uint32,
 	out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
+	p := r.physicalPath(name)
+
+	log.Info().
+		Uint32("mode", mode).
+		Str("path", p).
+		Msg("creating a file")
 
 	req := &protobuf.Request{
 		Type: protobuf.Request_CREATE,
@@ -53,7 +60,24 @@ func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 		return nil, nil, 0, PermissionDenied
 	}
 
-	return r.LoopbackNode.Create(ctx, name, flags, mode, out)
+	flags = flags &^ syscall.O_APPEND
+	fd, err := syscall.Open(p, int(flags)|os.O_CREATE, mode)
+	if err != nil {
+		return nil, nil, 0, fs.ToErrno(err)
+	}
+
+	st := syscall.Stat_t{}
+	if err = syscall.Fstat(fd, &st); err != nil {
+		syscall.Close(fd)
+		return nil, nil, 0, fs.ToErrno(err)
+	}
+
+	node := r.RootData.NewNode(r.RootData, r.EmbeddedInode(), name, &st)
+	ch := r.NewInode(ctx, node, r.idFromStat(&st))
+	lf := NewRfsFile(fd, name, r.host, r.mirror)
+
+	out.FromStat(&st)
+	return ch, lf, 0, 0
 }
 
 // Link is for hard link, not for symlink
@@ -134,11 +158,19 @@ func (r *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
 }
 
 func (r *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+	mode, ok := in.GetMode()
+
+	// The caller did not request mode change.
+	// Considering that it's the only thing that we handle, we can call it quits at this point.
+	if !ok {
+		return fs.OK
+	}
+
 	req := &protobuf.Request{
 		Type: protobuf.Request_SETATTR,
 		Metadata: &protobuf.Request_Metadata{
 			RelativePath: r.Path(r.Root()),
-			Mode:         in.Mode,
+			Mode:         mode,
 		},
 	}
 	if permitted := r.consultMirror(req); !permitted {
@@ -152,7 +184,14 @@ func (r *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAtt
 		return PermissionDenied
 	}
 
-	return r.LoopbackNode.Setattr(ctx, fh, in, out)
+	// No name as we're operating on the existing node (can't go deeper).
+	p := r.physicalPath("")
+
+	if err := syscall.Chmod(p, mode); err != nil {
+		return fs.ToErrno(err)
+	}
+
+	return fs.OK
 }
 
 func (r *rfsRoot) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
@@ -199,6 +238,10 @@ func (r *rfsRoot) CopyFileRange(ctx context.Context, fhIn fs.FileHandle,
 	return fflags, fakeError
 }
 
+func (r *rfsRoot) physicalPath(name string) string {
+	return filepath.Join(r.RootData.Path, r.relativePath(name))
+}
+
 func (r *rfsRoot) relativePath(name string) string {
 	return filepath.Join(r.Path(r.Root()), name)
 }
@@ -208,4 +251,16 @@ func (r *rfsRoot) consultMirror(req *protobuf.Request) (permitted bool) {
 		permitted = true
 	}
 	return
+}
+
+// idFromStat is a rip-off from go-fuse's loopback.go.
+func (r *rfsRoot) idFromStat(st *syscall.Stat_t) fs.StableAttr {
+	dev := r.LoopbackNode.RootData.Dev
+	swapped := (uint64(st.Dev) << 32) | (uint64(st.Dev) >> 32)
+	swappedRootDev := (dev << 32) | (dev >> 32)
+	return fs.StableAttr{
+		Mode: uint32(st.Mode),
+		Gen:  1,
+		Ino:  (swapped ^ swappedRootDev) ^ st.Ino,
+	}
 }
