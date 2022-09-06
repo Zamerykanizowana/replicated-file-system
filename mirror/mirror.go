@@ -51,6 +51,7 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 		}
 		_, err = f.WriteAt(request.Content, request.Metadata.WriteOffset)
 		return err
+	case protobuf.Request_COPY_FILE_RANGE:
 	default:
 		log.Panic().Msg("BUG: unknown protobuf.Request_Type")
 	}
@@ -113,6 +114,7 @@ func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 	case protobuf.Request_WRITE:
 		// TODO verify it!
 		return protobuf.ACK()
+	case protobuf.Request_COPY_FILE_RANGE:
 	default:
 		log.Panic().Msg("BUG: unknown protobuf.Request_Type")
 	}

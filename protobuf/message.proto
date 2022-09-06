@@ -29,6 +29,7 @@ message Request {
     SYMLINK = 6;
     UNLINK = 7;
     WRITE = 8;
+    COPY_FILE_RANGE = 9;
   }
 
   message Metadata {
