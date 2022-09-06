@@ -89,9 +89,7 @@ func run(ctx context.Context, conf *config.Config) error {
 	}
 
 	// Unmount filesystem and close connections upon receiving signal.
-	go sig.closeOnSignal(host, server)
-
-	server.Wait()
+	sig.closeOnSignal(host, server)
 	return nil
 }
 

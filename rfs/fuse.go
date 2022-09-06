@@ -1,7 +1,6 @@
 package rfs
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -58,17 +57,11 @@ func (s *Server) Mount() (err error) {
 }
 
 func (s *Server) Close() error {
+	log.Debug().Msg("closing FUSE server")
 	if err := s.Server.Unmount(); err != nil {
-		return errors.Wrap(err, "failed to unmount fuse")
+		return errors.Wrapf(err,
+			"failed to unmount fuse, unmount manually by calling: fusermount -u %s",
+			s.Config.Paths.FuseDir)
 	}
 	return nil
-}
-
-func (s *Server) Wait() {
-	log.Info().
-		Str("cmd", fmt.Sprintf("fusermount -u %s", s.Config.Paths.FuseDir)).
-		Msg("unmount by calling")
-
-	// Wait until user unmounts FS
-	s.Server.Wait()
 }
