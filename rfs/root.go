@@ -180,8 +180,6 @@ func (r *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAtt
 		// No name as we're operating on the existing node (can't go deeper).
 		p := r.physicalPath("")
 
-		log.Info().Uint32("mode", mode).Str("physical_path", p)
-
 		if err := syscall.Chmod(p, mode); err != nil {
 			return fs.ToErrno(err)
 		}
