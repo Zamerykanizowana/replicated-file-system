@@ -158,31 +158,37 @@ func (r *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {
 }
 
 func (r *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
-	if mode, ok := in.GetMode(); ok {
-		req := &protobuf.Request{
-			Type: protobuf.Request_SETATTR,
-			Metadata: &protobuf.Request_Metadata{
-				RelativePath: r.Path(r.Root()),
-				Mode:         mode,
-			},
-		}
-		if permitted := r.consultMirror(req); !permitted {
-			return PermissionDenied
-		}
+	mode, ok := in.GetMode()
 
-		if err := r.host.Replicate(ctx, req); err != nil {
-			log.Err(err).
-				Object("request", req).
-				Msg("failed to set attributes for the file")
-			return PermissionDenied
-		}
+	// The caller did not request mode change.
+	// Considering that it's the only thing that we handle, we can call it quits at this point.
+	if !ok {
+		return fs.OK
+	}
 
-		// No name as we're operating on the existing node (can't go deeper).
-		p := r.physicalPath("")
+	req := &protobuf.Request{
+		Type: protobuf.Request_SETATTR,
+		Metadata: &protobuf.Request_Metadata{
+			RelativePath: r.Path(r.Root()),
+			Mode:         mode,
+		},
+	}
+	if permitted := r.consultMirror(req); !permitted {
+		return PermissionDenied
+	}
 
-		if err := syscall.Chmod(p, mode); err != nil {
-			return fs.ToErrno(err)
-		}
+	if err := r.host.Replicate(ctx, req); err != nil {
+		log.Err(err).
+			Object("request", req).
+			Msg("failed to set attributes for the file")
+		return PermissionDenied
+	}
+
+	// No name as we're operating on the existing node (can't go deeper).
+	p := r.physicalPath("")
+
+	if err := syscall.Chmod(p, mode); err != nil {
+		return fs.ToErrno(err)
 	}
 
 	return fs.OK
