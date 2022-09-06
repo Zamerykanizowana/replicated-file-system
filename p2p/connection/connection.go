@@ -39,16 +39,28 @@ type (
 	// Connection is used to encapsulate all required logic and parameters
 	// for a single net.Conn uniquely associated with a single peer.
 	Connection struct {
-		host                *config.Peer
-		peer                *config.Peer
-		conn                quic.Connection
-		status              Status
-		perspective         Perspective
+		// host describes the p2p.Host we're running.
+		host *config.Peer
+		// peer describes who are we connecting with.
+		peer *config.Peer
+		// conn hols the underlying QUIC connection to the peer.
+		conn quic.Connection
+		// status describes the Status of the connection.
+		status Status
+		// perspective informs about the QUIC perspective we assumed either Client or Server.
+		perspective Perspective
+		// perspectiveResolver is used to resolve the perspective,
+		// so that we can discern whether we're acting as a Client or Server.
 		perspectiveResolver *perspectiveResolver
-		mu                  *sync.Mutex
-		openNotify          chan struct{}
-		netOpTimeout        time.Duration
-		sink                chan<- message
+		// mu is a mutex used to block operations which change the Connection state.
+		mu *sync.Mutex
+		// openNotify is a channel onto which Connection publishes
+		// when it changes it's status to StatusAlive.
+		openNotify chan struct{}
+		// netOpTimeout is the timeout on all network operations, both send and recv.
+		netOpTimeout time.Duration
+		// sink is used to forward received messages further down the pipeline.
+		sink chan<- message
 	}
 	// Status informs about the connection state, If the net.Conn is established and running
 	// it will hold StatusAlive, otherwise StatusDead.

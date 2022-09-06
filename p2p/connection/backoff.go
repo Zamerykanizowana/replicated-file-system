@@ -9,6 +9,8 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
 
+// NewBackoff returns an initialised Backoff instance which can be be reused
+// for a single peer connection dialing.
 func NewBackoff(conf *config.Backoff) *Backoff {
 	return &Backoff{
 		Backoff: conf,
@@ -85,7 +87,7 @@ func (b *Backoff) next() time.Duration {
 	return dur
 }
 
-// Reset restarts the current attempt counter at zero.
+// Reset restarts the current attempt counter to zero.
 func (b *Backoff) Reset() {
 	b.attempt = 0
 	b.val = b.Initial

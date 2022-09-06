@@ -116,7 +116,8 @@ func send(ctx context.Context, op uniStreamOpener, data []byte) error {
 	return nil
 }
 
-// TODO handle stream errors here somehow.
+// selectResult selects from context, error and done channels,
+// if any error was detected it returns the error.
 func selectResult(
 	ctx context.Context,
 	errCh <-chan error,
@@ -132,6 +133,10 @@ func selectResult(
 	}
 }
 
+// streamContextDone handles scenarios when stream context was either:
+// - cancelled
+// - deadline was exceeded
+// It maps these two errors to related streamErr.
 func streamContextDone(ctx context.Context) error {
 	switch ctx.Err() {
 	case context.Canceled:
@@ -144,6 +149,8 @@ func streamContextDone(ctx context.Context) error {
 	return nil
 }
 
+// closeConn closes the QUIC connection with the error which is converted to
+// quic.ApplicationErrorCode and passed to the other side of the connection.
 func closeConn(conn quic.Connection, err error) {
 	if conn == nil {
 		return

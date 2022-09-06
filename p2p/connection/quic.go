@@ -16,7 +16,7 @@ type quicDial = func(
 ) (quic.Connection, error)
 
 func quicConfig(handshakeTimeout time.Duration) *quic.Config {
-	conf := &quic.Config{
+	return &quic.Config{
 		Versions:                       []quic.VersionNumber{quic.Version2},
 		ConnectionIDLength:             12,
 		HandshakeIdleTimeout:           handshakeTimeout,
@@ -35,5 +35,4 @@ func quicConfig(handshakeTimeout time.Duration) *quic.Config {
 		// We don't want these, you can read more on why here: https://www.rfc-editor.org/rfc/rfc9221.html
 		EnableDatagrams: false,
 	}
-	return conf
 }
