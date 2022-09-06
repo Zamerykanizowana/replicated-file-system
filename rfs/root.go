@@ -67,7 +67,7 @@ func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 	}
 
 	st := syscall.Stat_t{}
-	if err := syscall.Fstat(fd, &st); err != nil {
+	if err = syscall.Fstat(fd, &st); err != nil {
 		syscall.Close(fd)
 		return nil, nil, 0, fs.ToErrno(err)
 	}
