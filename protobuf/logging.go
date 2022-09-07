@@ -22,7 +22,9 @@ func (r *Request) MarshalZerologObject(e *zerolog.Event) {
 func (m *Request_Metadata) MarshalZerologObject(e *zerolog.Event) {
 	e.Str("path", m.RelativePath).
 		Uint32("mode", m.Mode).
-		Int64("write_offset", m.WriteOffset)
+		Int64("write_offset", m.WriteOffset).
+		Int64("read_offset", m.ReadOffset).
+		Int64("write_len", m.WriteLen)
 }
 
 func (r *Response) MarshalZerologObject(e *zerolog.Event) {

@@ -37,6 +37,8 @@ message Request {
     string new_relative_path = 2;
     uint32 mode = 3;
     int64 write_offset = 4;
+    int64 read_offset = 5;
+    int64 write_len = 6;
   }
 }
 
@@ -56,5 +58,7 @@ message Response {
     ERR_DOES_NOT_EXIST = 2;
     ERR_TRANSACTION_CONFLICT = 3;
     ERR_NOT_A_DIRECTORY = 4;
+    ERR_NOT_A_FILE = 5;
+    ERR_INVALID_MODE = 6;
   }
 }

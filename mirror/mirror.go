@@ -3,24 +3,25 @@ package mirror
 import (
 	"os"
 	"path/filepath"
-	"strconv"
+	"syscall"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sys/unix"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
 func NewMirror(conf *config.Paths) *Mirror {
-	return &Mirror{conf: conf}
+	return &Mirror{dir: conf.MirrorDir}
 }
 
 type Mirror struct {
-	conf *config.Paths
+	dir string
 }
 
-func (m *Mirror) Mirror(request *protobuf.Request) error {
+func (m Mirror) Mirror(request *protobuf.Request) error {
 	switch request.Type {
 	case protobuf.Request_CREATE:
 		_, err := os.OpenFile(
@@ -52,30 +53,58 @@ func (m *Mirror) Mirror(request *protobuf.Request) error {
 		_, err = f.WriteAt(request.Content, request.Metadata.WriteOffset)
 		return err
 	case protobuf.Request_COPY_FILE_RANGE:
+		src, err := syscall.Open(
+			m.path(request.Metadata.RelativePath),
+			syscall.O_RDONLY, 0)
+		if err != nil {
+			return err
+		}
+		dst, err := syscall.Open(
+			m.path(request.Metadata.NewRelativePath),
+			syscall.O_WRONLY, 0)
+		if err != nil {
+			return err
+		}
+		rOff, wOff := request.Metadata.ReadOffset, request.Metadata.WriteOffset
+		written, err := unix.CopyFileRange(
+			src, &rOff,
+			dst, &wOff,
+			int(request.Metadata.WriteLen), 0)
+		if written != int(request.Metadata.WriteLen) {
+			return errors.Errorf("should've written %d but only wrote %d to a file",
+				request.Metadata.WriteLen, written)
+		}
+		return nil
 	default:
 		log.Panic().Msg("BUG: unknown protobuf.Request_Type")
 	}
 	return nil
 }
 
-func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
+func (m Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 	switch request.Type {
 	case protobuf.Request_LINK, protobuf.Request_SYMLINK:
-		oldExists, err := m.isExists(request.Metadata.RelativePath)
+		oldExists, err := m.exists(request.Metadata.RelativePath)
 		if err != nil {
 			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
 		}
-		newExists, err := m.isExists(request.Metadata.NewRelativePath)
+		newExists, err := m.exists(request.Metadata.NewRelativePath)
 		if err != nil {
 			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
 		}
-		if oldExists && !newExists {
-			return protobuf.ACK()
+		if !oldExists {
+			return protobuf.NACK(protobuf.Response_ERR_DOES_NOT_EXIST,
+				errors.Errorf("symlink source: %s does not exist",
+					request.Metadata.RelativePath))
 		}
-		return protobuf.NACK(protobuf.Response_ERR_ALREADY_EXISTS, errors.New("oldRelativePath is "+strconv.
-			FormatBool(oldExists)+", newRelativePath is "+strconv.FormatBool(newExists)))
+		if newExists {
+			return protobuf.NACK(protobuf.Response_ERR_ALREADY_EXISTS,
+				errors.Errorf("symlink destination: %s already exist",
+					request.Metadata.NewRelativePath))
+		}
+		return protobuf.ACK()
 	case protobuf.Request_CREATE, protobuf.Request_MKDIR:
-		exists, err := m.isExists(request.Metadata.RelativePath)
+		exists, err := m.exists(request.Metadata.RelativePath)
 		if err != nil {
 			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
 		}
@@ -115,13 +144,35 @@ func (m *Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 		// TODO verify it!
 		return protobuf.ACK()
 	case protobuf.Request_COPY_FILE_RANGE:
+		for _, path := range []string{
+			request.Metadata.RelativePath,
+			request.Metadata.NewRelativePath,
+		} {
+			info, err := os.Stat(m.path(path))
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return protobuf.NACK(protobuf.Response_ERR_DOES_NOT_EXIST,
+						errors.Errorf("%s does not exist", path))
+				}
+				return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
+			}
+			if !info.Mode().IsRegular() {
+				return protobuf.NACK(protobuf.Response_ERR_NOT_A_FILE,
+					errors.Errorf("%s is not a regular file", path))
+			}
+		}
+		if err := syscall.Access(m.path(request.Metadata.NewRelativePath), syscall.O_RDWR); err != nil {
+			return protobuf.NACK(protobuf.Response_ERR_INVALID_MODE,
+				errors.Wrap(err, "expected to have read-write access to the destination file"))
+		}
+		return protobuf.ACK()
 	default:
 		log.Panic().Msg("BUG: unknown protobuf.Request_Type")
 	}
 	return nil
 }
 
-func (m *Mirror) isExists(relativePath string) (bool, error) {
+func (m Mirror) exists(relativePath string) (bool, error) {
 	if _, err := os.Stat(m.path(relativePath)); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
@@ -131,6 +182,6 @@ func (m *Mirror) isExists(relativePath string) (bool, error) {
 	return true, nil
 }
 
-func (m *Mirror) path(relPath string) string {
-	return filepath.Join(m.conf.MirrorDir, relPath)
+func (m Mirror) path(relPath string) string {
+	return filepath.Join(m.dir, relPath)
 }

@@ -76,14 +76,14 @@ func run(ctx context.Context, conf *config.Config) error {
 		Str("branch", branch).
 		Str("host", flagValues.Name).
 		Str("local_path", conf.Paths.FuseDir).
-		Msg("Initializing FS")
+		Msg("Initializing Replicated File System")
 
 	mir := mirror.NewMirror(&conf.Paths)
+
 	host := p2p.NewHost(flagValues.Name, conf.Peers, &conf.Connection, mir)
 	host.Run(ctx)
 
 	server := rfs.NewServer(*conf, host, mir)
-
 	if err := server.Mount(); err != nil {
 		return errors.Wrap(err, "unable to mount fuse filesystem")
 	}

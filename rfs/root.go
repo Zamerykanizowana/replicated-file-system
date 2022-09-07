@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 
@@ -74,7 +76,7 @@ func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 
 	node := r.RootData.NewNode(r.RootData, r.EmbeddedInode(), name, &st)
 	ch := r.NewInode(ctx, node, r.idFromStat(&st))
-	lf := NewRfsFile(fd, name, r.host, r.mirror)
+	lf := NewRfsFile(fd, r.relativePath(name), r.host, r.mirror)
 
 	out.FromStat(&st)
 	return ch, lf, 0, 0
@@ -114,7 +116,7 @@ func (r *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse
 	return r.LoopbackNode.Mkdir(ctx, name, mode, out)
 }
 
-func (r *rfsRoot) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
+func (r *rfsRoot) Open(_ context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	flags = flags &^ syscall.O_APPEND
 	p := filepath.Join(r.RootData.Path, r.Path(r.Root()))
 	f, err := syscall.Open(p, int(flags), 0)
@@ -226,16 +228,40 @@ func (r *rfsRoot) Unlink(ctx context.Context, name string) syscall.Errno {
 	return r.LoopbackNode.Unlink(ctx, name)
 }
 
-func (r *rfsRoot) CopyFileRange(ctx context.Context, fhIn fs.FileHandle,
-	offIn uint64, out *fs.Inode, fhOut fs.FileHandle, offOut uint64,
-	len uint64, flags uint64) (uint32, syscall.Errno) {
-	fflags, _ := r.LoopbackNode.CopyFileRange(ctx, fhIn, offIn, out, fhOut, offOut, len, flags)
+func (r *rfsRoot) CopyFileRange(
+	ctx context.Context, fhIn fs.FileHandle,
+	offIn uint64, _ *fs.Inode, fhOut fs.FileHandle,
+	offOut, len, flags uint64,
+) (uint32, syscall.Errno) {
+	rfsInFile, _ := fhIn.(*rfsFile)
+	rfsOutFile, _ := fhOut.(*rfsFile)
 
-	fakeError := syscall.ETXTBSY
+	req := &protobuf.Request{
+		Type: protobuf.Request_COPY_FILE_RANGE,
+		Metadata: &protobuf.Request_Metadata{
+			RelativePath:    rfsInFile.path,
+			NewRelativePath: rfsOutFile.path,
+			WriteOffset:     int64(offOut),
+			ReadOffset:      int64(offIn),
+			WriteLen:        int64(len),
+		},
+	}
 
-	log.Info().Msg("error for copyfilerange: ETXTBSY: ")
+	if permitted := r.consultMirror(req); !permitted {
+		return 0, PermissionDenied
+	}
 
-	return fflags, fakeError
+	if err := r.host.Replicate(ctx, req); err != nil {
+		log.Err(err).
+			Object("request", req).
+			Msg("failed to copy file range")
+		return 0, PermissionDenied
+	}
+
+	signedOffIn := int64(offIn)
+	signedOffOut := int64(offOut)
+	count, err := unix.CopyFileRange(rfsInFile.fd, &signedOffIn, rfsOutFile.fd, &signedOffOut, int(len), int(flags))
+	return uint32(count), fs.ToErrno(err)
 }
 
 func (r *rfsRoot) physicalPath(name string) string {
@@ -256,10 +282,10 @@ func (r *rfsRoot) consultMirror(req *protobuf.Request) (permitted bool) {
 // idFromStat is a rip-off from go-fuse's loopback.go.
 func (r *rfsRoot) idFromStat(st *syscall.Stat_t) fs.StableAttr {
 	dev := r.LoopbackNode.RootData.Dev
-	swapped := (uint64(st.Dev) << 32) | (uint64(st.Dev) >> 32)
+	swapped := (st.Dev << 32) | (st.Dev >> 32)
 	swappedRootDev := (dev << 32) | (dev >> 32)
 	return fs.StableAttr{
-		Mode: uint32(st.Mode),
+		Mode: st.Mode,
 		Gen:  1,
 		Ino:  (swapped ^ swappedRootDev) ^ st.Ino,
 	}
