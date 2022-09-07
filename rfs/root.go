@@ -282,10 +282,16 @@ func (r *rfsRoot) CopyFileRange(
 	return uint32(count), fs.ToErrno(err)
 }
 
+// physicalPath returns the full path to the file in the underlying file system.
+// It is therefore an equivalent to *LoopbackNode.path.
+// This path is only relevant in the context of local changes (i.e. it shouldn't
+// be sent over the wire).
 func (r *rfsRoot) physicalPath(name string) string {
 	return filepath.Join(r.RootData.Path, r.relativePath(name))
 }
 
+// relativePath returns the full file path without the component derived
+// from the underlying file system.
 func (r *rfsRoot) relativePath(name string) string {
 	return filepath.Join(r.Path(r.Root()), name)
 }
