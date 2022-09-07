@@ -2,7 +2,6 @@ package rfs
 
 import (
 	"context"
-	"os"
 	"syscall"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -12,15 +11,6 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
-
-func NewRfsFile(fd int, path string, host *p2p.Host, mirror Mirror) fs.FileHandle {
-	return &rfsFile{
-		loopbackFile: fs.NewLoopbackFile(fd).(loopbackFile),
-		host:         host,
-		mirror:       mirror,
-		path:         path,
-	}
-}
 
 type loopbackFile interface {
 	Release(ctx context.Context) syscall.Errno
@@ -36,12 +26,22 @@ type loopbackFile interface {
 	Allocate(ctx context.Context, off uint64, size uint64, mode uint32) syscall.Errno
 }
 
+func NewRfsFile(fd int, path string, host *p2p.Host, mirror Mirror) fs.FileHandle {
+	return &rfsFile{
+		loopbackFile: fs.NewLoopbackFile(fd).(loopbackFile),
+		host:         host,
+		mirror:       mirror,
+		path:         path,
+		fd:           fd,
+	}
+}
+
 type rfsFile struct {
 	loopbackFile
 	host   *p2p.Host
 	mirror Mirror
 	path   string
-	mode   os.FileMode
+	fd     int
 }
 
 func (f *rfsFile) Write(ctx context.Context, data []byte, off int64) (written uint32, errno syscall.Errno) {
