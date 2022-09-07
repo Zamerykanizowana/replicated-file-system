@@ -70,7 +70,7 @@ func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 
 	st := syscall.Stat_t{}
 	if err = syscall.Fstat(fd, &st); err != nil {
-		syscall.Close(fd)
+		_ = syscall.Close(fd)
 		return nil, nil, 0, fs.ToErrno(err)
 	}
 
@@ -126,15 +126,33 @@ func (r *rfsRoot) Open(_ context.Context, flags uint32) (fs.FileHandle, uint32, 
 	return NewRfsFile(f, r.Path(r.Root()), r.host, r.mirror), 0, 0
 }
 
-func (r *rfsRoot) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string,
-	flags uint32) syscall.Errno {
-	_ = r.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
+func (r *rfsRoot) Rename(
+	ctx context.Context,
+	name string, newParent fs.InodeEmbedder,
+	newName string, flags uint32,
+) syscall.Errno {
+	req := &protobuf.Request{
+		Type: protobuf.Request_RENAME,
+		Metadata: &protobuf.Request_Metadata{
+			RelativePath: r.relativePath(name),
+			NewRelativePath: filepath.Join(
+				newParent.EmbeddedInode().Path(nil),
+				r.relativePath(newName)),
+		},
+	}
 
-	fakeError := syscall.EBADF
+	if permitted := r.consultMirror(req); !permitted {
+		return PermissionDenied
+	}
 
-	log.Info().Msg("error for rename: EBADF: File descriptor in bad state")
+	if err := r.host.Replicate(ctx, req); err != nil {
+		log.Err(err).
+			Object("request", req).
+			Msg("failed to rename file")
+		return PermissionDenied
+	}
 
-	return fakeError
+	return r.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
 }
 
 func (r *rfsRoot) Rmdir(ctx context.Context, name string) syscall.Errno {

@@ -36,6 +36,9 @@ func (m Mirror) Mirror(request *protobuf.Request) error {
 			m.path(request.Metadata.RelativePath),
 			os.FileMode(request.Metadata.Mode))
 	case protobuf.Request_RENAME:
+		return os.Rename(
+			m.path(request.Metadata.RelativePath),
+			m.path(request.Metadata.NewRelativePath))
 	case protobuf.Request_RMDIR, protobuf.Request_UNLINK:
 		return os.Remove(m.path(request.Metadata.RelativePath))
 	case protobuf.Request_SETATTR:
@@ -113,6 +116,25 @@ func (m Mirror) Consult(request *protobuf.Request) *protobuf.Response {
 		}
 		return protobuf.ACK()
 	case protobuf.Request_RENAME:
+		oldInfo, err := os.Stat(m.path(request.Metadata.RelativePath))
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return protobuf.NACK(protobuf.Response_ERR_DOES_NOT_EXIST, err)
+			}
+			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
+		}
+		newInfo, err := os.Stat(m.path(request.Metadata.NewRelativePath))
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return protobuf.ACK()
+			}
+			return protobuf.NACK(protobuf.Response_ERR_UNKNOWN, err)
+		}
+		if oldInfo.Mode().Type() != newInfo.Mode().Type() {
+			return protobuf.NACK(protobuf.Response_ERR_INVALID_MODE,
+				errors.New("file types of old and new filename don't match"))
+		}
+		return protobuf.ACK()
 	case protobuf.Request_RMDIR:
 		if pathInfo, err := os.Stat(m.path(request.Metadata.RelativePath)); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
