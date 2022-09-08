@@ -82,17 +82,6 @@ func (r *rfsRoot) Create(ctx context.Context, name string, flags uint32, mode ui
 	return ch, lf, 0, 0
 }
 
-// Link is for hard link, not for symlink
-func (r *rfsRoot) Link(ctx context.Context, target fs.InodeEmbedder, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	inode, _ := r.LoopbackNode.Link(ctx, target, name, out)
-
-	fakeError := syscall.EXDEV
-
-	log.Info().Msg("error for link: EXDEV: Cross-device link")
-
-	return inode, fakeError
-}
-
 func (r *rfsRoot) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (
 	*fs.Inode, syscall.Errno,
 ) {
@@ -215,13 +204,52 @@ func (r *rfsRoot) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAtt
 }
 
 func (r *rfsRoot) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	inode, _ := r.LoopbackNode.Symlink(ctx, target, name, out)
+	req := &protobuf.Request{
+		Type: protobuf.Request_SYMLINK,
+		Metadata: &protobuf.Request_Metadata{
+			RelativePath:    r.relativePath(target),
+			NewRelativePath: r.relativePath(name),
+		},
+	}
 
-	fakeError := syscall.ENFILE
+	if permitted := r.consultMirror(req); !permitted {
+		return nil, PermissionDenied
+	}
 
-	log.Info().Msg("error for symlink: ENFILE: Too many open files in system")
+	if err := r.host.Replicate(ctx, req); err != nil {
+		log.Err(err).
+			Object("request", req).
+			Msg("failed to create symlink")
+		return nil, PermissionDenied
+	}
 
-	return inode, fakeError
+	return r.LoopbackNode.Symlink(ctx, target, name, out)
+}
+
+// Link is for hard link, not for symlink.
+// It behaves just like Symlink and it literally calls it under the hood.
+func (r *rfsRoot) Link(ctx context.Context, target fs.InodeEmbedder, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	targetPath := target.EmbeddedInode().Path(nil)
+	req := &protobuf.Request{
+		Type: protobuf.Request_LINK,
+		Metadata: &protobuf.Request_Metadata{
+			RelativePath:    r.relativePath(targetPath),
+			NewRelativePath: r.relativePath(name),
+		},
+	}
+
+	if permitted := r.consultMirror(req); !permitted {
+		return nil, PermissionDenied
+	}
+
+	if err := r.host.Replicate(ctx, req); err != nil {
+		log.Err(err).
+			Object("request", req).
+			Msg("failed to create symlink")
+		return nil, PermissionDenied
+	}
+
+	return r.LoopbackNode.Symlink(ctx, targetPath, name, out)
 }
 
 func (r *rfsRoot) Unlink(ctx context.Context, name string) syscall.Errno {
