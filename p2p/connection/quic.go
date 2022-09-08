@@ -15,12 +15,13 @@ type quicDial = func(
 	config *quic.Config,
 ) (quic.Connection, error)
 
-func quicConfig(handshakeTimeout time.Duration) *quic.Config {
+func quicConfig() *quic.Config {
 	return &quic.Config{
 		Versions:                       []quic.VersionNumber{quic.Version2},
 		ConnectionIDLength:             12,
-		HandshakeIdleTimeout:           handshakeTimeout,
-		MaxIdleTimeout:                 1 * time.Minute,
+		HandshakeIdleTimeout:           5 * time.Second,
+		MaxIdleTimeout:                 12 * time.Second,
+		KeepAlivePeriod:                4 * time.Second,
 		InitialStreamReceiveWindow:     (1 << 10) * 512,       // 512 Kb
 		MaxStreamReceiveWindow:         (1 << 20) * 6,         // 6 Mb
 		InitialConnectionReceiveWindow: (1 << 10) * 512 * 1.5, // 768 Kb
@@ -28,7 +29,6 @@ func quicConfig(handshakeTimeout time.Duration) *quic.Config {
 		MaxIncomingStreams:             -1,                    // Doesn't allow bidirectional streams.
 		MaxIncomingUniStreams:          100,
 		StatelessResetKey:              nil,
-		KeepAlivePeriod:                15 * time.Second,
 		DisablePathMTUDiscovery:        false,
 		// We're communicating between peers only, which are built with a single version.
 		DisableVersionNegotiationPackets: true,
