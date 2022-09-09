@@ -30,7 +30,7 @@ peers work on the same FS which is replicated on their local machines.
 
 | Name        | Description                                                             |
 |-------------|-------------------------------------------------------------------------|
-| `adr`       | Architecture decision recrods. Why we did what we did.                  |
+| `adr`       | Architecture decision records. Why we did what we did.                  |
 | `config`    | Reading and parsing config files along with the default config.json.    |
 | `mirror`    | Applying and consulting (do I agree to replicate) replication requests. |
 | `protobuf`  | Protbuf definitions and auto generate `go` code along with our helpers. |
