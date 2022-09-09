@@ -36,6 +36,7 @@ func TestPerspectiveResolver_Resolve(t *testing.T) {
 				return nil
 			},
 		}
+		resolver.counter.Store(0)
 
 		err := resolver.Resolve(context.Background(), Server, nil, func() bool { return true })
 		require.NoError(t, err)
@@ -51,7 +52,7 @@ func TestPerspectiveResolver_Resolve(t *testing.T) {
 				return nil
 			},
 		}
-		resolver.counter.Store(1)
+		resolver.counter.Store(0)
 
 		err := resolver.Resolve(context.Background(), Server, nil, func() bool { return false })
 		require.Error(t, err)
