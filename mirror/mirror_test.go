@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -181,5 +182,87 @@ func TestConsult_Rename(t *testing.T) {
 				require.Equal(t, protobuf.Response_ACK, resp.Type)
 			}
 		})
+	}
+}
+
+func TestMirror_Link(t *testing.T) {
+	m := Mirror{dir: t.TempDir()}
+	f, err := os.OpenFile(m.path("source"), os.O_CREATE|os.O_WRONLY, os.FileMode(0666))
+	require.NoError(t, err)
+	content := []byte("hey what a test it is!")
+	_, err = f.Write(content)
+	require.NoError(t, err)
+
+	for _, typ := range []protobuf.Request_Type{
+		protobuf.Request_LINK,
+		protobuf.Request_SYMLINK,
+	} {
+		t.Run(typ.String(), func(t *testing.T) {
+			err = m.Mirror(&protobuf.Request{
+				Type: typ,
+				Metadata: &protobuf.Request_Metadata{
+					RelativePath:    "source",
+					NewRelativePath: "linked-source-" + typ.String(),
+				},
+			})
+			require.NoError(t, err)
+
+			f, err = os.Open(m.path("linked-source-" + typ.String()))
+			require.NoError(t, err)
+			data, err := io.ReadAll(f)
+			require.NoError(t, err)
+			assert.Equal(t, content, data)
+		})
+	}
+}
+
+func TestConsult_Link(t *testing.T) {
+	m := Mirror{dir: t.TempDir()}
+	_, err := os.OpenFile(m.path("source"), os.O_CREATE, os.FileMode(0444))
+	require.NoError(t, err)
+
+	for name, test := range map[string]struct {
+		Metadata      *protobuf.Request_Metadata
+		ExpectedError protobuf.Response_Error
+	}{
+		"source doesn't exist": {
+			Metadata: &protobuf.Request_Metadata{
+				RelativePath:    "not-exists",
+				NewRelativePath: "destination",
+			},
+			ExpectedError: protobuf.Response_ERR_DOES_NOT_EXIST,
+		},
+		"destination exists": {
+			Metadata: &protobuf.Request_Metadata{
+				RelativePath:    "source",
+				NewRelativePath: "source",
+			},
+			ExpectedError: protobuf.Response_ERR_ALREADY_EXISTS,
+		},
+		"check passes": {
+			Metadata: &protobuf.Request_Metadata{
+				RelativePath:    "source",
+				NewRelativePath: "destination",
+			},
+		},
+	} {
+		for _, typ := range []protobuf.Request_Type{
+			protobuf.Request_LINK,
+			protobuf.Request_SYMLINK,
+		} {
+			t.Run(fmt.Sprintf("%s: %s", typ, name), func(t *testing.T) {
+				resp := m.Consult(&protobuf.Request{
+					Type:     typ,
+					Metadata: test.Metadata,
+				})
+
+				if test.ExpectedError > 0 {
+					require.Equal(t, protobuf.Response_NACK, resp.Type)
+					assert.Equal(t, test.ExpectedError, *resp.Error)
+				} else {
+					require.Equal(t, protobuf.Response_ACK, resp.Type)
+				}
+			})
+		}
 	}
 }

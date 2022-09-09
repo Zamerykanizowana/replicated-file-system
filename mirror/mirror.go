@@ -30,7 +30,9 @@ func (m Mirror) Mirror(request *protobuf.Request) error {
 			os.FileMode(request.Metadata.Mode))
 		return err
 	case protobuf.Request_SYMLINK, protobuf.Request_LINK:
-		return os.Symlink(m.path(request.Metadata.RelativePath), m.path(request.Metadata.NewRelativePath))
+		return os.Symlink(
+			m.path(request.Metadata.RelativePath),
+			m.path(request.Metadata.NewRelativePath))
 	case protobuf.Request_MKDIR:
 		return os.Mkdir(
 			m.path(request.Metadata.RelativePath),
