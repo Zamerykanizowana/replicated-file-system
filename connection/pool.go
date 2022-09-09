@@ -22,11 +22,12 @@ func NewPool(
 ) *Pool {
 	msgs := make(chan message, connConf.MessageBufferSize)
 
+	activeConnections := new(atomic.Uint64)
 	whitelist := make(map[peerName]struct{}, len(peers))
 	cs := make(map[peerName]*Connection, len(whitelist))
 	for _, peer := range peers {
 		whitelist[peer.Name] = struct{}{}
-		cs[peer.Name] = NewConnection(host, peer, connConf.SendRecvTimeout, msgs)
+		cs[peer.Name] = NewConnection(host, peer, connConf.SendRecvTimeout, msgs, activeConnections)
 	}
 
 	p := &Pool{
@@ -37,6 +38,7 @@ func NewPool(
 		msgs:                          msgs,
 		dialBackoffConfig:             &connConf.DialBackoff,
 		connectionEstablishingTimeout: connConf.HandshakeTimeout,
+		activeConnections:             activeConnections,
 	}
 
 	tlsConf.VerifyConnection = p.VerifyConnection
@@ -80,6 +82,8 @@ type (
 		closed atomic.Bool
 		// cancelFunc should be called during shutdown to speed up the process of closing the Pool.
 		cancelFunc context.CancelFunc
+		// activeConnections tells us the number of active (StatusAlive) Connection.
+		activeConnections *atomic.Uint64
 	}
 	// message allows passing errors along with data through channels.
 	message struct {
@@ -138,7 +142,10 @@ func (p *Pool) Close() error {
 	return nil
 }
 
-var errPoolClosed = errors.New("pool is being shutdown")
+var (
+	ErrPeerIsDown = errors.New("one or more of the peers is down")
+	errPoolClosed = errors.New("pool is being shutdown")
+)
 
 // addConnectionHandler increments the active connection handlers count by 1.
 func (p *Pool) addConnectionHandler() error {
@@ -162,6 +169,9 @@ func (p *Pool) Broadcast(ctx context.Context, data []byte) error {
 		mErr = &MultiErr{}
 		wg   sync.WaitGroup
 	)
+	if p.activeConnections.Load() != uint64(len(p.pool)) {
+		return ErrPeerIsDown
+	}
 	wg.Add(len(p.pool))
 	for _, c := range p.pool {
 		go func(conn *Connection) {

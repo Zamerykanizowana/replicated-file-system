@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
@@ -20,6 +21,7 @@ func NewConnection(
 	peer *config.Peer,
 	timeout time.Duration,
 	sink chan<- message,
+	activeConnections *atomic.Uint64,
 ) *Connection {
 	return &Connection{
 		host:                host,
@@ -32,6 +34,7 @@ func NewConnection(
 		openNotify:          make(chan struct{}),
 		netOpTimeout:        timeout,
 		sink:                sink,
+		activeConnections:   activeConnections,
 	}
 }
 
@@ -61,6 +64,9 @@ type (
 		netOpTimeout time.Duration
 		// sink is used to forward received messages further down the pipeline.
 		sink chan<- message
+		// activeConnections should be incremented when Connection is StatusAlive and decremented
+		// when it goes to StatusDead.
+		activeConnections *atomic.Uint64
 	}
 	// Status informs about the connection state, If the net.Conn is established and running
 	// it will hold StatusAlive, otherwise StatusDead.

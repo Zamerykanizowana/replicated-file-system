@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"io"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -69,7 +70,10 @@ func (h *Host) Close() error {
 var (
 	ErrTransactionConflict = errors.New("transaction conflict detected and resolved in favor of other peer")
 	ErrNotPermitted        = errors.New("operation was not permitted")
+	ErrTimeout             = errors.New("timeout exceeded while waiting for the transaction to end")
 )
+
+const replicationTimeout = 5 * time.Minute
 
 // Replicate TODO document me.
 func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
@@ -97,8 +101,15 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 		}
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, replicationTimeout)
+	defer cancel()
+	var msg *protobuf.Message
 	for i := 0; i < sentMessagesCount; i++ {
-		msg := <-trans.NotifyChan
+		select {
+		case <-ctx.Done():
+			return ErrTimeout
+		case msg = <-trans.NotifyChan:
+		}
 		log.Info().
 			Object("host", h).
 			Object("msg", msg).
@@ -178,9 +189,18 @@ func (h *Host) receive() (*protobuf.Message, error) {
 }
 
 func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) error {
-	var ourResponse protobuf.Response_Type
+	ctx, cancel := context.WithTimeout(ctx, replicationTimeout)
+	defer cancel()
+	var (
+		ourResponse protobuf.Response_Type
+		msg         *protobuf.Message
+	)
 	for range h.peers {
-		msg := <-transaction.NotifyChan
+		select {
+		case <-ctx.Done():
+			return ErrTimeout
+		case msg = <-transaction.NotifyChan:
+		}
 
 		log.Info().
 			Object("host", h).
