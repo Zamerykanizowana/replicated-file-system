@@ -30,14 +30,14 @@ var (
 	flagValues = struct {
 		Name string
 		Path cli.Path
-		Test bool
 	}{}
 )
 
 func main() {
 	app := &cli.App{
-		Name:     "rfs",
-		HelpName: "Replicated file system using FUSE bindings and peer-2-peer architecture",
+		Name:  "rfs",
+		Usage: "Replicated file system using FUSE bindings and peer-2-peer architecture",
+		//HelpName: "Replicated file system using FUSE bindings and peer-2-peer architecture",
 		Flags: []cli.Flag{
 			&cli.PathFlag{
 				Name:        "config",

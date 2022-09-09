@@ -18,7 +18,7 @@ DOCKER_IMAGE = "${APP_NAME}:${GIT_BRANCH}-${GIT_COMMIT}"
 
 CERT_AGE := -days 365
 CERT_KEY_SIZE = 4096
-CERT_PATH ?= p2p/connection/cert
+CERT_PATH ?= connection/cert
 
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 

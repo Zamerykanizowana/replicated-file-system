@@ -56,3 +56,69 @@ PEER=Gimli CONFIGPATH=var/config-gimli.json make
 ```
 
 For more details run either `make help` or simply `make`.
+
+## Configuring
+
+```text
+NAME:
+   rfs - Replicated file system using FUSE bindings and peer-2-peer architecture
+
+USAGE:
+   rfs [global options] command [command options] [arguments...]
+
+COMMANDS:
+   help, h  Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --config value, -c value  Load configuration from 'FILE' (default: By default embedded config.json is loaded)
+   --help, -h                show help (default: false)
+   --name value, -n value    Provide peer name, It must be also present in the config, linked to an address
+```
+
+Aside from `-c/--config` which provides  and `-n/--name` flags all configuration is done through a json config file.
+You can view the schema with constraints and detailed information on what's what
+inside [config.go](./config/config.go).
+
+Here's an example:
+
+```json
+{
+  "connection": {
+    "tls_version": "1.3",
+    "message_buffer_size": 10000,
+    "dial_backoff": {
+      "initial": 100000000,
+      "max": 30000000000,
+      "factor": 1.3,
+      "max_factor_jitter": 0.2
+    },
+    "send_recv_timeout": 60000000000,
+    "handshake_timeout": 5000000000,
+    "network": "tcp",
+    "compression": "DefaultCompression"
+  },
+  "peers": [
+    {
+      "address": "localhost:9001",
+      "name": "Aragorn"
+    },
+    {
+      "address": "localhost:9005",
+      "name": "Gimli"
+    }
+  ],
+  "paths": {
+    "fuse_dir": "~/other/rfs/virtual",
+    "mirror_dir": "~/other/rfs/contents"
+  },
+  "logging": {
+    "level": "info"
+  }
+}
+```
+
+## Troubleshooting
+
+A common issue occurs when we kill the `rfs` process when the virtual (mounted) directory is still busy.
+You will get an error log explaining what's wrong and what manual steps should be taken to fix the issue.
+All you need to do is manually unmount the directory yourself
