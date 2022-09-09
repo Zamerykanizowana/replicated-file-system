@@ -7,19 +7,19 @@ import (
 	"github.com/lucas-clemente/quic-go"
 )
 
-// BroadcastMultiErr aggregates errors from Broadcast.
-type BroadcastMultiErr struct {
+// MultiErr aggregates errors from Broadcast or Close operations.
+type MultiErr struct {
 	errs map[peerName]error
 	mu   sync.Mutex
 }
 
-func (e *BroadcastMultiErr) Errors() map[peerName]error {
+func (e *MultiErr) Errors() map[peerName]error {
 	return e.errs
 }
 
-func (e *BroadcastMultiErr) Error() string {
+func (e *MultiErr) Error() string {
 	b := strings.Builder{}
-	b.WriteString("sending errors: ")
+	b.WriteString("connection errors: ")
 	for peerAddr, err := range e.errs {
 		b.WriteString(peerAddr)
 		b.WriteString(" > ")
@@ -29,7 +29,7 @@ func (e *BroadcastMultiErr) Error() string {
 	return b.String()[:b.Len()-2]
 }
 
-func (e *BroadcastMultiErr) Append(peer string, err error) {
+func (e *MultiErr) Append(peer string, err error) {
 	e.mu.Lock()
 	if e.errs == nil {
 		e.errs = make(map[peerName]error)
@@ -38,7 +38,7 @@ func (e *BroadcastMultiErr) Append(peer string, err error) {
 	e.mu.Unlock()
 }
 
-func (e *BroadcastMultiErr) Empty() bool {
+func (e *MultiErr) Empty() bool {
 	return len(e.errs) == 0
 }
 

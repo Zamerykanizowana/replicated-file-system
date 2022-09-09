@@ -90,7 +90,7 @@ go/test: ## Run unit tests.
 	go test -v -race ./...
 
 go/test-e2e: ## Run end to end tests.
-	go test -tags e2e -v ./p2p
+	go test -tags e2e -v ./test
 
 go/verify: ## Verify files in project.
 	go vet ./...

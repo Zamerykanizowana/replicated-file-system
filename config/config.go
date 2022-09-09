@@ -42,10 +42,10 @@ func Read(path string) *Config {
 
 type (
 	Config struct {
-		Connection Connection `json:"connection" validate:"required"`
-		Peers      Peers      `json:"peers" validate:"required,gt=0,unique=Name"`
-		Paths      Paths      `json:"paths" validate:"required"`
-		Logging    Logging    `json:"logging" validate:"required"`
+		Connection *Connection `json:"connection" validate:"required"`
+		Peers      Peers       `json:"peers" validate:"required,gt=0,unique=Name"`
+		Paths      *Paths      `json:"paths" validate:"required"`
+		Logging    *Logging    `json:"logging" validate:"required"`
 	}
 
 	Peers []*Peer
@@ -69,7 +69,7 @@ type (
 		// MessageBufferSize is the buffer of the global message channel onto which
 		// goroutines listening on peer Connection push received messages.
 		MessageBufferSize uint `json:"message_buffer_size" validate:"required,gt=0"`
-		// SendRecvTimeout sets the timeout for Recv and Broadcast operations.
+		// SendRecvTimeout sets the timeout for Receive and Broadcast operations.
 		SendRecvTimeout time.Duration `json:"send_recv_timeout" validate:"required,gt=0"`
 		// HandshakeTimeout sets the timeout for handshakes.
 		HandshakeTimeout time.Duration `json:"handshake_timeout" validate:"required,gt=0"`

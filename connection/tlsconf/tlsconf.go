@@ -5,7 +5,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection/cert"
+	"github.com/Zamerykanizowana/replicated-file-system/connection/cert"
 )
 
 // Default returns tls.Config with sensible defaults, prepared for

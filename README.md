@@ -26,6 +26,20 @@ peers work on the same FS which is replicated on their local machines.
 11. Each peer decides on it's own if it should replicate (mirror) the requested change
     by gathering responses of other peers and his own.
 
+## Project structure
+
+| Name        | Description                                                             |
+|-------------|-------------------------------------------------------------------------|
+| `adr`       | Architecture decision recrods. Why we did what we did.                  |
+| `config`    | Reading and parsing config files along with the default config.json.    |
+| `mirror`    | Applying and consulting (do I agree to replicate) replication requests. |
+| `protobuf`  | Protbuf definitions and auto generate `go` code along with our helpers. |
+| `logging`   | [Zerolog](https://github.com/rs/zerolog) configuration.                 |
+| `rfs`       | FUSE server and bindings.                                               |
+| `p2p`       | Peer-2-Peer replication mechanisms.                                     |
+| `connetion` | The underlying network connection.                                      |
+| `test`      | End to end tests.                                                       |
+
 ## Running
 
 We provide both `Makefile` and `Dockerfile` and strongly suggest running it with either.
@@ -40,3 +54,5 @@ The below command spins a single peer with the name `Gimli` using config under t
 ```shell
 PEER=Gimli CONFIGPATH=var/config-gimli.json make
 ```
+
+For more details run either `make help` or simply `make`.

@@ -151,9 +151,9 @@ func streamContextDone(ctx context.Context) error {
 
 // closeConn closes the QUIC connection with the error which is converted to
 // quic.ApplicationErrorCode and passed to the other side of the connection.
-func closeConn(conn quic.Connection, err error) {
+func closeConn(conn quic.Connection, err error) error {
 	if conn == nil {
-		return
+		return nil
 	}
 	log.Debug().Err(err).Msg("closing connection")
 	var cErr connErr
@@ -161,8 +161,7 @@ func closeConn(conn quic.Connection, err error) {
 		cErr = connErrUnspecified
 	}
 	if err = conn.CloseWithError(quic.ApplicationErrorCode(cErr), err.Error()); err != nil {
-		log.Err(err).
-			Stringer("remote_addr", conn.RemoteAddr()).
-			Msg("failed to close connection")
+		return errors.Wrapf(err, "failed to close connection on remote addr: %s", conn.RemoteAddr().String())
 	}
+	return nil
 }
