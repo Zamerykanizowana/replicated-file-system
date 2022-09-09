@@ -61,12 +61,17 @@ type (
 //   - 00000110 --> { Perspective: Server, Counter: 2 }
 //
 // IF
-// 		The counter from the received resolvent is equal to the counter value
-// 		we've sent ourselves.
+//
+//	The counter from the received resolvent is equal to the counter value
+//	we've sent ourselves.
+//
 // OR
-// 		The counters differed but the fallback returns true.
+//
+//	The counters differed but the fallback returns true.
+//
 // THEN
-// 		The connection is successfully resolved.
+//
+//	The connection is successfully resolved.
 //
 // In any other case an error describing the reason for failed resolution is returned.
 func (p *perspectiveResolver) Resolve(
@@ -150,7 +155,7 @@ func (p *perspectiveResolvent) Encode() (b []byte) {
 	// It's dodgy that we assume 4 bits will suffice here.
 	// In theory this counter can grow forever If we keep losing the connection with the peer
 	// in a dirty manner (when the peer doesn't close the connection on its side).
-	return []byte{byte(uint32(p.Perspective)<<4 | p.ctr)}
+	return []byte{byte(uint32(p.Perspective)<<6 | p.ctr)}
 }
 
 // Decode decodes the resolvent reading Perspective and counter from the first 4 bits.
@@ -160,8 +165,8 @@ func (p *perspectiveResolvent) Decode(b []byte) error {
 			" expected exactly 1 byte, got %d with %v content", len(b), b)
 	}
 	// Right bit shift to get the last 4 bits.
-	p.Perspective = Perspective(b[0] >> 4)
-	// Apply 00001111 bitmask to get the first 4 bits.
-	p.ctr = uint32(b[0] & 15)
+	p.Perspective = Perspective(b[0] >> 6)
+	// Apply 00111111 bitmask to get the first 4 bits.
+	p.ctr = uint32(b[0] & 63)
 	return nil
 }
