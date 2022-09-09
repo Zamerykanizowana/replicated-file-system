@@ -8,10 +8,11 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/rs/zerolog/log"
 
-	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
+// loopbackFile has to aggregate all of these functions so that we're able to preserve them
+// when embedding the fs.loopbackFile (which is not exported...) inside rootFile.
 type loopbackFile interface {
 	Release(ctx context.Context) syscall.Errno
 	Getattr(ctx context.Context, out *fuse.AttrOut) syscall.Errno
@@ -26,25 +27,25 @@ type loopbackFile interface {
 	Allocate(ctx context.Context, off uint64, size uint64, mode uint32) syscall.Errno
 }
 
-func NewRfsFile(fd int, path string, host *p2p.Host, mirror Mirror) fs.FileHandle {
-	return &rfsFile{
+func NewRfsFile(fd int, path string, replicator Replicator, mirror Mirror) fs.FileHandle {
+	return &rootFile{
 		loopbackFile: fs.NewLoopbackFile(fd).(loopbackFile),
-		host:         host,
+		rep:          replicator,
 		mirror:       mirror,
 		path:         path,
 		fd:           fd,
 	}
 }
 
-type rfsFile struct {
+type rootFile struct {
 	loopbackFile
-	host   *p2p.Host
+	rep    Replicator
 	mirror Mirror
 	path   string
 	fd     int
 }
 
-func (f *rfsFile) Write(ctx context.Context, data []byte, off int64) (written uint32, errno syscall.Errno) {
+func (f *rootFile) Write(ctx context.Context, data []byte, off int64) (written uint32, errno syscall.Errno) {
 	req := &protobuf.Request{
 		Type:    protobuf.Request_WRITE,
 		Content: data,
@@ -56,7 +57,7 @@ func (f *rfsFile) Write(ctx context.Context, data []byte, off int64) (written ui
 	if typ := f.mirror.Consult(req).GetType(); typ == protobuf.Response_NACK {
 		return 0, PermissionDenied
 	}
-	if err := f.host.Replicate(ctx, req); err != nil {
+	if err := f.rep.Replicate(ctx, req); err != nil {
 		log.Err(err).
 			Object("request", req).
 			Str("file", f.path).
@@ -67,7 +68,9 @@ func (f *rfsFile) Write(ctx context.Context, data []byte, off int64) (written ui
 	return f.loopbackFile.Write(ctx, data, off)
 }
 
-func (f *rfsFile) Lseek(ctx context.Context, off uint64, whence uint32) (uint64, syscall.Errno) {
+// Lseek is here so that maybe one day we'll catch it in the wild! We were not able to observe when it's called
+// that's why this log is still left here. Once we spot it and know when it's used the log can be removed.
+func (f *rootFile) Lseek(ctx context.Context, off uint64, whence uint32) (uint64, syscall.Errno) {
 	log.Info().
 		Str("path", f.path).
 		Uint64("offset", off).

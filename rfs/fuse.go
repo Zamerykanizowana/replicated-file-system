@@ -1,12 +1,13 @@
 package rfs
 
 import (
+	"context"
 	"os"
 	"time"
 
 	"github.com/pkg/errors"
 
-	"github.com/Zamerykanizowana/replicated-file-system/p2p"
+	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -15,26 +16,34 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
 
-func NewServer(c config.Config, p *p2p.Host, mirror Mirror) *Server {
+type Mirror interface {
+	Consult(request *protobuf.Request) *protobuf.Response
+}
+
+type Replicator interface {
+	Replicate(ctx context.Context, request *protobuf.Request) error
+}
+
+func NewServer(c config.Config, replicator Replicator, mirror Mirror) *Server {
 	if err := os.MkdirAll(c.Paths.FuseDir, 0777); err != nil {
 		log.Fatal().Err(err).Msg("unable to create local directory")
 	}
 
-	root := &rfsRoot{
-		host:   p,
+	r := &root{
+		rep:    replicator,
 		mirror: mirror,
 	}
 
 	loopbackRoot := &fs.LoopbackRoot{
-		NewNode: root.newRfsRoot,
+		NewNode: r.newRfsRoot,
 		Path:    c.Paths.MirrorDir,
 	}
 
 	return &Server{
 		LoopbackRoot: loopbackRoot,
-		RfsRoot:      root.newRfsRoot(loopbackRoot, nil, "", nil),
+		RfsRoot:      r.newRfsRoot(loopbackRoot, nil, "", nil),
 		Config:       c,
-		Peer:         p,
+		Replicator:   replicator,
 	}
 }
 
@@ -43,7 +52,7 @@ type Server struct {
 	RfsRoot      fs.InodeEmbedder
 	Config       config.Config
 	Server       *fuse.Server
-	Peer         *p2p.Host
+	Replicator   Replicator
 }
 
 func (s *Server) Mount() (err error) {
