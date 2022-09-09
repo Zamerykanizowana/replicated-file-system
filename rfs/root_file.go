@@ -46,23 +46,15 @@ type rootFile struct {
 }
 
 func (f *rootFile) Write(ctx context.Context, data []byte, off int64) (written uint32, errno syscall.Errno) {
-	req := &protobuf.Request{
+	if errno = replicate(ctx, &protobuf.Request{
 		Type:    protobuf.Request_WRITE,
 		Content: data,
 		Metadata: &protobuf.Request_Metadata{
 			RelativePath: f.path,
 			WriteOffset:  off,
 		},
-	}
-	if typ := f.mirror.Consult(req).GetType(); typ == protobuf.Response_NACK {
-		return 0, PermissionDenied
-	}
-	if err := f.rep.Replicate(ctx, req); err != nil {
-		log.Err(err).
-			Object("request", req).
-			Str("file", f.path).
-			Msg("failed to write to file")
-		return 0, PermissionDenied
+	}, f.rep, f.mirror); errno != NoError {
+		return 0, errno
 	}
 
 	return f.loopbackFile.Write(ctx, data, off)

@@ -16,13 +16,14 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
 
-type Mirror interface {
-	Consult(request *protobuf.Request) *protobuf.Response
-}
-
-type Replicator interface {
-	Replicate(ctx context.Context, request *protobuf.Request) error
-}
+type (
+	Mirror interface {
+		Consult(request *protobuf.Request) *protobuf.Response
+	}
+	Replicator interface {
+		Replicate(ctx context.Context, request *protobuf.Request) error
+	}
+)
 
 func NewServer(c config.Config, replicator Replicator, mirror Mirror) *Server {
 	if err := os.MkdirAll(c.Paths.FuseDir, 0777); err != nil {

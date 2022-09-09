@@ -16,13 +16,13 @@ import (
 
 func NewPool(
 	host *config.Peer,
-	peers []*config.Peer,
+	peers config.Peers,
 	connConf *config.Connection,
 	tlsConf *tls.Config,
 ) *Pool {
 	msgs := make(chan message, connConf.MessageBufferSize)
 
-	activeConnections := new(atomic.Uint64)
+	activeConnections := new(atomic.Int64)
 	whitelist := make(map[peerName]struct{}, len(peers))
 	cs := make(map[peerName]*Connection, len(whitelist))
 	for _, peer := range peers {
@@ -83,7 +83,7 @@ type (
 		// cancelFunc should be called during shutdown to speed up the process of closing the Pool.
 		cancelFunc context.CancelFunc
 		// activeConnections tells us the number of active (StatusAlive) Connection.
-		activeConnections *atomic.Uint64
+		activeConnections *atomic.Int64
 	}
 	// message allows passing errors along with data through channels.
 	message struct {
@@ -169,7 +169,7 @@ func (p *Pool) Broadcast(ctx context.Context, data []byte) error {
 		mErr = &MultiErr{}
 		wg   sync.WaitGroup
 	)
-	if p.activeConnections.Load() != uint64(len(p.pool)) {
+	if p.activeConnections.Load() != int64(len(p.pool)) {
 		return ErrPeerIsDown
 	}
 	wg.Add(len(p.pool))

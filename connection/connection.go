@@ -21,7 +21,7 @@ func NewConnection(
 	peer *config.Peer,
 	timeout time.Duration,
 	sink chan<- message,
-	activeConnections *atomic.Uint64,
+	activeConnections *atomic.Int64,
 ) *Connection {
 	return &Connection{
 		host:                host,
@@ -66,7 +66,7 @@ type (
 		sink chan<- message
 		// activeConnections should be incremented when Connection is StatusAlive and decremented
 		// when it goes to StatusDead.
-		activeConnections *atomic.Uint64
+		activeConnections *atomic.Int64
 	}
 	// Status informs about the connection state, If the net.Conn is established and running
 	// it will hold StatusAlive, otherwise StatusDead.
@@ -138,6 +138,7 @@ func (c *Connection) Establish(
 	c.conn = conn
 	c.perspective = perspective
 	c.status = StatusAlive
+	c.activeConnections.Add(1)
 	go func() { c.openNotify <- struct{}{} }()
 
 	go c.watchConnection(conn)
@@ -238,6 +239,7 @@ func (c *Connection) Close(err error) error {
 	c.status = StatusDead
 	c.perspective = Unknown
 	c.perspectiveResolver.Reset()
+	c.activeConnections.Add(-1)
 	return err
 }
 

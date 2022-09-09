@@ -17,21 +17,22 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
-type Mirror interface {
-	Mirror(request *protobuf.Request) error
-	Consult(request *protobuf.Request) *protobuf.Response
-}
-
-type Connection interface {
-	io.Closer
-	Run(ctx context.Context)
-	Broadcast(ctx context.Context, data []byte) error
-	Receive() (data []byte, err error)
-}
+type (
+	Mirror interface {
+		Mirror(request *protobuf.Request) error
+		Consult(request *protobuf.Request) *protobuf.Response
+	}
+	Connection interface {
+		io.Closer
+		Run(ctx context.Context)
+		Broadcast(ctx context.Context, data []byte) error
+		Receive() (data []byte, err error)
+	}
+)
 
 func NewHost(
 	host *config.Peer,
-	peers []*config.Peer,
+	peers config.Peers,
 	conn Connection,
 	mirror Mirror,
 ) *Host {
@@ -51,7 +52,7 @@ type Host struct {
 	Conn         Connection
 	Mirror       Mirror
 	transactions *Transactions
-	peers        []*config.Peer
+	peers        config.Peers
 	conflicts    *conflictsResolver
 }
 
@@ -70,7 +71,6 @@ func (h *Host) Close() error {
 var (
 	ErrTransactionConflict = errors.New("transaction conflict detected and resolved in favor of other peer")
 	ErrNotPermitted        = errors.New("operation was not permitted")
-	ErrTimeout             = errors.New("timeout exceeded while waiting for the transaction to end")
 )
 
 const replicationTimeout = 5 * time.Minute
@@ -94,9 +94,10 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 
 	sentMessagesCount := len(h.peers)
 	if err = h.broadcast(ctx, message); err != nil {
-		if sendErr, ok := err.(*connection.MultiErr); ok && len(sendErr.Errors()) == len(h.peers) {
+		sendErr, ok := err.(*connection.MultiErr)
+		if !ok || (ok && len(sendErr.Errors()) == len(h.peers)) {
 			return err
-		} else {
+		} else if ok {
 			sentMessagesCount = len(h.peers) - len(sendErr.Errors())
 		}
 	}
@@ -107,7 +108,7 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 	for i := 0; i < sentMessagesCount; i++ {
 		select {
 		case <-ctx.Done():
-			return ErrTimeout
+			return ctx.Err()
 		case msg = <-trans.NotifyChan:
 		}
 		log.Info().
@@ -130,12 +131,7 @@ func (h *Host) LoadConflictsClock() uint64 {
 }
 
 func (h *Host) processResponses(trans *Transaction) error {
-	errorsCtr := map[protobuf.Response_Error]uint{
-		protobuf.Response_ERR_UNKNOWN:              0,
-		protobuf.Response_ERR_ALREADY_EXISTS:       0,
-		protobuf.Response_ERR_DOES_NOT_EXIST:       0,
-		protobuf.Response_ERR_TRANSACTION_CONFLICT: 0,
-	}
+	errorsCtr := make(map[protobuf.Response_Error]uint)
 	var rejected bool
 	for _, resp := range trans.Responses {
 		if resp.Type == protobuf.Response_NACK {
@@ -153,7 +149,7 @@ func (h *Host) processResponses(trans *Transaction) error {
 		otherErrors += count
 	}
 	// If the only error we encountered was protobuf.Response_ERR_TRANSACTION_CONFLICT.
-	if errorsCtr[protobuf.Response_ERR_TRANSACTION_CONFLICT] > 0 && otherErrors == 0 {
+	if _, ok := errorsCtr[protobuf.Response_ERR_TRANSACTION_CONFLICT]; ok && otherErrors == 0 {
 		h.conflicts.IncrementClock()
 	}
 	if rejected {
@@ -198,7 +194,7 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) 
 	for range h.peers {
 		select {
 		case <-ctx.Done():
-			return ErrTimeout
+			return ctx.Err()
 		case msg = <-transaction.NotifyChan:
 		}
 

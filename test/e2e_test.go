@@ -59,7 +59,7 @@ func TestHost_ReplicateSingleOperation(t *testing.T) {
 	Gimli.Run(ctx)
 	Legolas.Run(ctx)
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(100 * time.Millisecond)
 
 	wg := sync.WaitGroup{}
 	wg.Add(3)
@@ -110,7 +110,7 @@ func TestHost_Reconnection(t *testing.T) {
 	Aragorn.Run(ctx)
 	Legolas.Run(ctx)
 
-	time.Sleep(time.Second)
+	time.Sleep(100 * time.Millisecond)
 
 	send := func() {
 		require.NoError(t, Aragorn.Replicate(ctx, &protobuf.Request{
@@ -163,7 +163,7 @@ func TestHost_ConflictsResolving(t *testing.T) {
 	Aragorn.Run(ctx)
 	Legolas.Run(ctx)
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(100 * time.Millisecond)
 
 	// This is a dirty hack, but should work most of the time.
 	// There's still nondeterministic behaviour sleeping here though.
@@ -233,6 +233,32 @@ func TestHost_ConflictsResolving(t *testing.T) {
 	assert.EqualValues(t, 2, Aragorn.LoadConflictsClock())
 	assert.EqualValues(t, 2, Gimli.LoadConflictsClock())
 	assert.EqualValues(t, 2, Legolas.LoadConflictsClock())
+}
+
+func TestReplicate_Errors(t *testing.T) {
+	Aragorn := hostStructForName(t, AragornsName)
+	defer mustClose(t, Aragorn)
+	Gimli := hostStructForName(t, GimlisName)
+	defer mustClose(t, Gimli)
+	// Not Running Legolas at all!
+	// 		Legolas := hostStructForName(t, LegolasName)
+	// 		defer mustClose(t, Legolas)
+	// 		Legolas.Run(ctx)
+
+	ctx := context.Background()
+	Gimli.Run(ctx)
+	Aragorn.Run(ctx)
+
+	time.Sleep(100 * time.Millisecond)
+
+	req := &protobuf.Request{
+		Type:     protobuf.Request_CREATE,
+		Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere", Mode: 0666},
+	}
+	err := Aragorn.Replicate(ctx, req)
+
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, connection.ErrPeerIsDown)
 }
 
 func hostStructForName(t *testing.T, name string) *p2p.Host {
