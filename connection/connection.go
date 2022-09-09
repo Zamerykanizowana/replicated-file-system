@@ -145,7 +145,9 @@ func (c *Connection) Establish(
 func (c *Connection) watchConnection(conn quic.Connection) {
 	ctx := conn.Context()
 	<-ctx.Done()
-	c.Close(ctx.Err())
+	if err := c.Close(ctx.Err()); err != nil {
+		log.Err(err).Send()
+	}
 }
 
 // Listen runs receiver loop, waiting for new messages.
@@ -161,7 +163,6 @@ func (c *Connection) Listen(ctx context.Context) {
 		}
 		data, err := c.Recv(ctx)
 		if err != nil {
-
 			c.sink <- message{err: err}
 			continue
 		}
@@ -210,13 +211,13 @@ func (c *Connection) WaitForOpen(ctx context.Context) error {
 }
 
 // Close closes the underlying net.Conn and sets Connection Status to StatusDead.
-func (c *Connection) Close(err error) {
+func (c *Connection) Close(err error) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// Either watchConnection or handleErrors gets here first.
 	if c.status == StatusDead {
-		return
+		return nil
 	}
 
 	log.Err(err).EmbedObject(c).Msg("connection to the peer was lost")
@@ -225,12 +226,13 @@ func (c *Connection) Close(err error) {
 	// attempt to close a connection that is already dead, this will result in blocking here
 	// potentially forever...
 	if c.conn.Context().Err() == nil {
-		closeConn(c.conn, err)
+		err = closeConn(c.conn, err)
 	}
 
 	c.status = StatusDead
 	c.perspective = Unknown
 	c.perspectiveResolver.Reset()
+	return err
 }
 
 func (c *Connection) MarshalZerologObject(e *zerolog.Event) {
@@ -275,7 +277,9 @@ func (c *Connection) handleErrors(err error) error {
 		}
 	}
 	if closed {
-		c.Close(err)
+		if closeErr := c.Close(err); closeErr != nil {
+			log.Err(closeErr).Send()
+		}
 		return errors.Wrap(err, connErrClosed.Error())
 	}
 	return err

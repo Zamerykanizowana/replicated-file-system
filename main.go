@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Zamerykanizowana/replicated-file-system/connection"
+	"github.com/Zamerykanizowana/replicated-file-system/connection/tlsconf"
 	"github.com/Zamerykanizowana/replicated-file-system/mirror"
 	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 
@@ -28,14 +30,14 @@ var (
 	flagValues = struct {
 		Name string
 		Path cli.Path
-		Test bool
 	}{}
 )
 
 func main() {
 	app := &cli.App{
-		Name:     "rfs",
-		HelpName: "Replicated file system using FUSE bindings and peer-2-peer architecture",
+		Name:  "rfs",
+		Usage: "Replicated file system using FUSE bindings and peer-2-peer architecture",
+		//HelpName: "Replicated file system using FUSE bindings and peer-2-peer architecture",
 		Flags: []cli.Flag{
 			&cli.PathFlag{
 				Name:        "config",
@@ -55,7 +57,7 @@ func main() {
 		},
 		Action: func(context *cli.Context) error {
 			conf := mustReadConfig()
-			logging.Configure(&conf.Logging)
+			logging.Configure(conf.Logging)
 			log.Debug().Object("config", conf).Msg("loaded config")
 			protobuf.SetCompression(conf.Connection.Compression)
 
@@ -78,18 +80,27 @@ func run(ctx context.Context, conf *config.Config) error {
 		Str("local_path", conf.Paths.FuseDir).
 		Msg("Initializing Replicated File System")
 
-	mir := mirror.NewMirror(&conf.Paths)
+	mir := mirror.NewMirror(conf.Paths)
 
-	host := p2p.NewHost(flagValues.Name, conf.Peers, &conf.Connection, mir)
-	host.Run(ctx)
+	host, peers := conf.Peers.Pop(flagValues.Name)
+	if len(host.Name) == 0 {
+		log.Fatal().
+			Str("name", flagValues.Name).
+			Interface("peers_config", conf.Peers).
+			Msg("invalid peer name provided, peer must be listed in the peers config")
+	}
+	conn := connection.NewPool(host, peers, conf.Connection, tlsconf.Default(conf.Connection.GetTLSVersion()))
 
-	server := rfs.NewServer(*conf, host, mir)
+	p2pHost := p2p.NewHost(host, peers, conn, mir)
+	p2pHost.Run(ctx)
+
+	server := rfs.NewServer(*conf, p2pHost, mir)
 	if err := server.Mount(); err != nil {
 		return errors.Wrap(err, "unable to mount fuse filesystem")
 	}
 
 	// Unmount filesystem and close connections upon receiving signal.
-	sig.closeOnSignal(host, server)
+	sig.closeOnSignal(p2pHost, server)
 	return nil
 }
 

@@ -107,7 +107,7 @@ func (p *Pool) Run(ctx context.Context) {
 // Close attempts to gracefully close all connections in a blocking manner,
 // while blocking new connections until the the listener is closed and dial routines
 // for each of the peers were closed.
-func (p *Pool) Close() {
+func (p *Pool) Close() error {
 	log.Info().Object("host", p.host).Msg("Closing all network connections")
 	log.Debug().Object("host", p.host).
 		Msg("waiting for all active connection handlers to return")
@@ -122,13 +122,20 @@ func (p *Pool) Close() {
 			break
 		}
 	}
+	mErr := &MultiErr{}
 	if err := p.listener.Close(); err != nil {
-		log.Err(err).Msg("failed to close QUIC listener")
+		mErr.Append("QUIC listener", errors.Wrap(err, "failed to close QUIC listener"))
 	}
 	log.Debug().Object("host", p.host).Msg("closing all connections")
 	for _, conn := range p.pool {
-		conn.Close(connErrClosed)
+		if err := conn.Close(connErrClosed); err != nil {
+			mErr.Append(conn.peer.Name, err)
+		}
 	}
+	if !mErr.Empty() {
+		return mErr
+	}
+	return nil
 }
 
 var errPoolClosed = errors.New("pool is being shutdown")
@@ -152,7 +159,7 @@ func (p *Pool) removeConnectionHandler() {
 // and waits for all of them to finish.
 func (p *Pool) Broadcast(ctx context.Context, data []byte) error {
 	var (
-		mErr = &BroadcastMultiErr{}
+		mErr = &MultiErr{}
 		wg   sync.WaitGroup
 	)
 	wg.Add(len(p.pool))
@@ -171,9 +178,9 @@ func (p *Pool) Broadcast(ctx context.Context, data []byte) error {
 	return nil
 }
 
-// Recv reads one message from the messages channel, it will block until
+// Receive reads one message from the messages channel, it will block until
 // a message appears on the channel.
-func (p *Pool) Recv() ([]byte, error) {
+func (p *Pool) Receive() ([]byte, error) {
 	m := <-p.msgs
 	return m.data, m.err
 }
@@ -194,7 +201,9 @@ func (p *Pool) acceptConnections(ctx context.Context) {
 	for {
 		conn, err := p.listener.Accept(ctx)
 		if errClosed := p.addConnectionHandler(); errClosed != nil {
-			closeConn(conn, connErrClosed)
+			if err = closeConn(conn, connErrClosed); err != nil {
+				log.Err(err).Send()
+			}
 			p.removeConnectionHandler()
 			return
 		}
@@ -285,7 +294,9 @@ func (p *Pool) add(ctx context.Context, perspective Perspective, quicConn quic.C
 		CommonName
 	conn := p.pool[peer]
 	if err := conn.Establish(ctx, perspective, quicConn); err != nil {
-		closeConn(quicConn, err)
+		if closeErr := closeConn(quicConn, err); closeErr != nil {
+			log.Err(closeErr).Send()
+		}
 		return errors.Wrap(err, "failed to establish connection")
 	}
 	return nil

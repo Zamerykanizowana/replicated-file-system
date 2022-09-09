@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	_ "embed"
+	"io"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -11,8 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
-	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection"
-	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection/tlsconf"
+	"github.com/Zamerykanizowana/replicated-file-system/connection"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
@@ -21,25 +21,25 @@ type Mirror interface {
 	Consult(request *protobuf.Request) *protobuf.Response
 }
 
+type Connection interface {
+	io.Closer
+	Run(ctx context.Context)
+	Broadcast(ctx context.Context, data []byte) error
+	Receive() (data []byte, err error)
+}
+
 func NewHost(
-	name string,
-	peersConfig config.Peers,
-	connConfig *config.Connection,
+	host *config.Peer,
+	peers []*config.Peer,
+	conn Connection,
 	mirror Mirror,
 ) *Host {
-	host, peers := peersConfig.Pop(name)
-	if len(host.Name) == 0 {
-		log.Fatal().
-			Str("name", name).
-			Interface("peers_config", peersConfig).
-			Msg("invalid peer name provided, peer must be listed in the peers config")
-	}
 	return &Host{
 		Peer:         *host,
-		connPool:     connection.NewPool(host, peers, connConfig, tlsconf.Default(connConfig.GetTLSVersion())),
+		Conn:         conn,
 		transactions: newTransactions(),
 		peers:        peers,
-		mirror:       mirror,
+		Mirror:       mirror,
 		conflicts:    newConflictsResolver(),
 	}
 }
@@ -47,24 +47,23 @@ func NewHost(
 // Host represents a single peer we're running in the p2p network.
 type Host struct {
 	config.Peer
-	connPool     *connection.Pool
+	Conn         Connection
+	Mirror       Mirror
 	transactions *Transactions
 	peers        []*config.Peer
-	mirror       Mirror
 	conflicts    *conflictsResolver
 }
 
 // Run kicks of connection processes for the Host.
 func (h *Host) Run(ctx context.Context) {
 	log.Info().Object("host", h).Msg("initializing p2p network connection")
-	h.connPool.Run(ctx)
+	h.Conn.Run(ctx)
 	go h.listen(ctx)
 }
 
 // Close closes the underlying connection.Pool.
 func (h *Host) Close() error {
-	h.connPool.Close()
-	return nil
+	return h.Conn.Close()
 }
 
 var (
@@ -72,6 +71,7 @@ var (
 	ErrNotPermitted        = errors.New("operation was not permitted")
 )
 
+// Replicate TODO document me.
 func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 	tid := uuid.New().String()
 	message, err := protobuf.NewRequestMessage(tid, h.Name, request)
@@ -90,7 +90,7 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 
 	sentMessagesCount := len(h.peers)
 	if err = h.broadcast(ctx, message); err != nil {
-		if sendErr, ok := err.(*connection.BroadcastMultiErr); ok && len(sendErr.Errors()) == len(h.peers) {
+		if sendErr, ok := err.(*connection.MultiErr); ok && len(sendErr.Errors()) == len(h.peers) {
 			return err
 		} else {
 			sentMessagesCount = len(h.peers) - len(sendErr.Errors())
@@ -106,6 +106,16 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 	}
 
 	return h.processResponses(trans)
+}
+
+// SetConflictsClock sets the conflicts clock atomically.
+func (h *Host) SetConflictsClock(v uint64) {
+	h.conflicts.clock.Store(v)
+}
+
+// LoadConflictsClock loads the conflicts clock atomically.
+func (h *Host) LoadConflictsClock() uint64 {
+	return h.conflicts.clock.Load()
 }
 
 func (h *Host) processResponses(trans *Transaction) error {
@@ -151,7 +161,7 @@ func (h *Host) broadcast(ctx context.Context, msg *protobuf.Message) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal protobuf message")
 	}
-	if err = h.connPool.Broadcast(ctx, data); err != nil {
+	if err = h.Conn.Broadcast(ctx, data); err != nil {
 		return err
 	}
 	return nil
@@ -160,7 +170,7 @@ func (h *Host) broadcast(ctx context.Context, msg *protobuf.Message) error {
 // receive a single protobuf.Message from the network.
 // It blocks until the message is received.
 func (h *Host) receive() (*protobuf.Message, error) {
-	data, err := h.connPool.Recv()
+	data, err := h.Conn.Receive()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to receive message from peer")
 	}
@@ -178,7 +188,7 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) 
 			Msg("message received")
 
 		if request := msg.GetRequest(); request != nil {
-			response := h.mirror.Consult(request)
+			response := h.Mirror.Consult(request)
 			if response.Type == protobuf.Response_ACK {
 				detected, greenLight := h.conflicts.DetectAndResolveConflict(h.transactions, msg)
 				if detected && !greenLight {
@@ -213,16 +223,16 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) 
 		return ErrNotPermitted
 	}
 
-	return h.mirror.Mirror(transaction.Request)
+	return h.Mirror.Mirror(transaction.Request)
 }
 
 func (h *Host) listen(ctx context.Context) {
 	for {
 		msg, err := h.receive()
 		if err != nil {
-			//log.Err(err).
-			//	Object("host", h).
-			//	Msg("Error while collecting a message")
+			log.Err(err).
+				Object("host", h).
+				Msg("Error while collecting a message")
 			continue
 		}
 		trans, created := h.transactions.Put(msg)

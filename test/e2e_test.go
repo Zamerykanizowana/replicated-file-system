@@ -1,6 +1,6 @@
 //go:build e2e
 
-package p2p
+package test
 
 import (
 	"context"
@@ -17,8 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Zamerykanizowana/replicated-file-system/config"
+	"github.com/Zamerykanizowana/replicated-file-system/connection"
 	"github.com/Zamerykanizowana/replicated-file-system/logging"
-	"github.com/Zamerykanizowana/replicated-file-system/p2p/connection"
+	"github.com/Zamerykanizowana/replicated-file-system/p2p"
 	"github.com/Zamerykanizowana/replicated-file-system/protobuf"
 )
 
@@ -122,23 +123,29 @@ func TestHost_Reconnection(t *testing.T) {
 
 	send()
 
-	_ = Legolas.Close()
-	_ = Aragorn.Close()
+	err := Legolas.Close()
+	require.NoError(t, err)
+	err = Aragorn.Close()
+	require.NoError(t, err)
+
+	time.Sleep(50 * time.Millisecond)
 
 	for i := 0; i < 10; i++ {
 		Aragorn.Run(ctx)
 		Legolas.Run(ctx)
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 
-		_ = Aragorn.Close()
-		_ = Legolas.Close()
+		err = Aragorn.Close()
+		require.NoError(t, err)
+		err = Legolas.Close()
+		require.NoError(t, err)
 	}
 
 	Aragorn.Run(ctx)
 	Legolas.Run(ctx)
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(200 * time.Millisecond)
 
 	send()
 }
@@ -163,20 +170,20 @@ func TestHost_ConflictsResolving(t *testing.T) {
 	// If one of the transactions still manages to finish before the other is received anywhere
 	// we might get either Gimli or Legolas get ACKs.
 	sweetDreams := func() { time.Sleep(time.Second) }
-	Gimli.mirror.(*mirrorMock).consultCallback = sweetDreams
-	Legolas.mirror.(*mirrorMock).consultCallback = sweetDreams
-	Aragorn.mirror.(*mirrorMock).consultCallback = sweetDreams
+	Gimli.Mirror.(*mirrorMock).consultCallback = sweetDreams
+	Legolas.Mirror.(*mirrorMock).consultCallback = sweetDreams
+	Aragorn.Mirror.(*mirrorMock).consultCallback = sweetDreams
 
 	wg := sync.WaitGroup{}
 	wg.Add(3)
 
-	send := func(host *Host, shouldSucceed bool) {
+	send := func(host *p2p.Host, shouldSucceed bool) {
 		defer wg.Done()
 
 		req := &protobuf.Request{
 			Type:     protobuf.Request_CREATE,
 			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere/same", Mode: 0666},
-			Clock:    host.conflicts.clock.Load(),
+			Clock:    host.LoadConflictsClock(),
 		}
 		err := host.Replicate(ctx, req)
 		if shouldSucceed {
@@ -189,9 +196,9 @@ func TestHost_ConflictsResolving(t *testing.T) {
 	}
 
 	// Set the clocks.
-	Aragorn.conflicts.clock.Store(1)
-	Legolas.conflicts.clock.Store(0)
-	Gimli.conflicts.clock.Store(0)
+	Aragorn.SetConflictsClock(1)
+	Legolas.SetConflictsClock(0)
+	Gimli.SetConflictsClock(0)
 
 	go send(Aragorn, true)
 	go send(Gimli, false)
@@ -199,9 +206,9 @@ func TestHost_ConflictsResolving(t *testing.T) {
 
 	wg.Wait()
 
-	assert.EqualValues(t, 1, Aragorn.conflicts.clock.Load())
-	assert.EqualValues(t, 1, Gimli.conflicts.clock.Load())
-	assert.EqualValues(t, 1, Legolas.conflicts.clock.Load())
+	assert.EqualValues(t, 1, Aragorn.LoadConflictsClock())
+	assert.EqualValues(t, 1, Gimli.LoadConflictsClock())
+	assert.EqualValues(t, 1, Legolas.LoadConflictsClock())
 
 	wg.Add(2)
 
@@ -211,9 +218,9 @@ func TestHost_ConflictsResolving(t *testing.T) {
 	wg.Wait()
 
 	assert.True(t, Legolas.Name > Gimli.Name)
-	assert.EqualValues(t, 1, Aragorn.conflicts.clock.Load())
-	assert.EqualValues(t, 2, Gimli.conflicts.clock.Load())
-	assert.EqualValues(t, 1, Legolas.conflicts.clock.Load())
+	assert.EqualValues(t, 1, Aragorn.LoadConflictsClock())
+	assert.EqualValues(t, 2, Gimli.LoadConflictsClock())
+	assert.EqualValues(t, 1, Legolas.LoadConflictsClock())
 
 	wg.Add(3)
 
@@ -223,26 +230,23 @@ func TestHost_ConflictsResolving(t *testing.T) {
 
 	wg.Wait()
 
-	assert.EqualValues(t, 2, Aragorn.conflicts.clock.Load())
-	assert.EqualValues(t, 2, Gimli.conflicts.clock.Load())
-	assert.EqualValues(t, 2, Legolas.conflicts.clock.Load())
+	assert.EqualValues(t, 2, Aragorn.LoadConflictsClock())
+	assert.EqualValues(t, 2, Gimli.LoadConflictsClock())
+	assert.EqualValues(t, 2, Legolas.LoadConflictsClock())
 }
 
-func hostStructForName(t *testing.T, name string) *Host {
+func hostStructForName(t *testing.T, name string) *p2p.Host {
 	conf := config.MustUnmarshalConfig(testConf)
-	peer, peers := conf.Peers.Pop(name)
-	return &Host{
-		Peer:         *peer,
-		peers:        peers,
-		transactions: newTransactions(),
-		mirror:       &mirrorMock{},
-		conflicts:    newConflictsResolver(),
-		connPool: connection.NewPool(
-			peer,
+	host, peers := conf.Peers.Pop(name)
+	return p2p.NewHost(
+		host,
+		peers,
+		connection.NewPool(
+			host,
 			peers,
-			&conf.Connection,
+			conf.Connection,
 			testTLSConf(t, name)),
-	}
+		&mirrorMock{})
 }
 
 func mustClose(t *testing.T, closer io.Closer) {
