@@ -43,7 +43,7 @@ func NewPool(
 	tlsConf.NextProtos = []string{Protocol}
 	p.tlsConfig = tlsConf
 
-	quicConf := quicConfig(p.connectionEstablishingTimeout)
+	quicConf := quicConfig()
 	p.quicConf = quicConf
 
 	p.dialFunc = quic.DialAddrContext
