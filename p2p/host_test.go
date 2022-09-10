@@ -14,13 +14,41 @@ import (
 func TestHost_Replicate(t *testing.T) {
 	host := NewHost(
 		&config.Peer{Name: "Ben"},
-		config.Peers{},
+		config.Peers{
+			{
+				Name:    "Legolas",
+				Address: "https://mirkwood:9011",
+			},
+		},
 		&mockConnection{},
 		&mockMirror{},
-		1*time.Second)
-	ctx := context.Background()
-	err := host.Replicate(ctx, &protobuf.Request{})
-	assert.NoError(t, err)
+		10*time.Second)
+	host.Run(context.Background())
+
+	t.Run("return timeout when context deadline is exceeded", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+
+		err := host.Replicate(ctx, &protobuf.Request{})
+
+		assert.Error(t, err)
+		assert.ErrorIs(t, context.DeadlineExceeded, err)
+		assert.Empty(t, host.transactions.ts)
+	})
+
+	t.Run("return cancelled when context is exceeded", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			cancel()
+		}()
+
+		err := host.Replicate(ctx, &protobuf.Request{})
+
+		assert.Error(t, err)
+		assert.ErrorIs(t, context.Canceled, err)
+		assert.Empty(t, host.transactions.ts)
+	})
 }
 
 type mockMirror struct{}
@@ -33,24 +61,17 @@ func (m mockMirror) Consult(request *protobuf.Request) *protobuf.Response {
 	return protobuf.ACK()
 }
 
-type mockConnection struct{}
-
-func (m mockConnection) Close() error {
-	//TODO implement me
-	panic("implement me")
+type mockConnection struct {
+	receive chan []byte
 }
 
-func (m mockConnection) Run(ctx context.Context) {
-	//TODO implement me
-	panic("implement me")
-}
+func (m mockConnection) Close() error { return nil }
 
-func (m mockConnection) Broadcast(ctx context.Context, data []byte) error {
-	//TODO implement me
-	panic("implement me")
-}
+func (m mockConnection) Run(_ context.Context) {}
+
+func (m mockConnection) Broadcast(_ context.Context, _ []byte) error { return nil }
 
 func (m mockConnection) Receive() (data []byte, err error) {
-	//TODO implement me
-	panic("implement me")
+	data = <-m.receive
+	return
 }
