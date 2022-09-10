@@ -76,10 +76,7 @@ func (h *Host) Close() error {
 	return h.Conn.Close()
 }
 
-var (
-	ErrTransactionConflict = errors.New("transaction conflict detected and resolved in favor of other peer")
-	ErrNotPermitted        = errors.New("operation was not permitted")
-)
+var ErrNotPermitted = errors.New("operation was not permitted")
 
 // Replicate TODO document me.
 func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
@@ -92,10 +89,9 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 	trans, _ := h.transactions.Put(message)
 	defer h.transactions.Delete(message.Tid)
 
-	detected, greenLight := h.conflicts.DetectAndResolveConflict(h.transactions, message)
-	if detected && !greenLight {
+	if err = h.conflicts.DetectAndResolveConflict(h.transactions, message); err != nil {
 		h.conflicts.IncrementClock()
-		return ErrTransactionConflict
+		return err
 	}
 
 	sentMessagesCount := len(h.peers)
@@ -212,11 +208,8 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) 
 		if request := msg.GetRequest(); request != nil {
 			response := h.Mirror.Consult(request)
 			if response.Type == protobuf.Response_ACK {
-				detected, greenLight := h.conflicts.DetectAndResolveConflict(h.transactions, msg)
-				if detected && !greenLight {
-					response = protobuf.NACK(
-						protobuf.Response_ERR_TRANSACTION_CONFLICT,
-						ErrTransactionConflict)
+				if err := h.conflicts.DetectAndResolveConflict(h.transactions, msg); err != nil {
+					response = protobuf.NACK(protobuf.Response_ERR_TRANSACTION_CONFLICT, err)
 				}
 			}
 			ourResponse = response.Type

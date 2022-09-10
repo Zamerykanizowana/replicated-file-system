@@ -49,6 +49,29 @@ func TestHost_Replicate(t *testing.T) {
 		assert.ErrorIs(t, context.Canceled, err)
 		assert.Empty(t, host.transactions.ts)
 	})
+
+	t.Run("detect and resolve transaction conflict with error", func(t *testing.T) {
+		// Existing transaction has higher clock.
+		host.transactions.Put(&protobuf.Message{
+			Tid:      "123",
+			PeerName: "Legolas",
+			Type: &protobuf.Message_Request{Request: &protobuf.Request{
+				Type:     protobuf.Request_CREATE,
+				Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere"},
+				Clock:    1,
+			}},
+		})
+
+		err := host.Replicate(context.Background(), &protobuf.Request{
+			Type:     protobuf.Request_MKDIR,
+			Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere"},
+		})
+		host.transactions.Delete("123")
+
+		assert.Error(t, err)
+		assert.ErrorIs(t, ErrTransactionConflict, err)
+		assert.Empty(t, host.transactions.ts)
+	})
 }
 
 type mockMirror struct{}
