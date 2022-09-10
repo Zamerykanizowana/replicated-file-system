@@ -30,6 +30,10 @@ var (
 	flagValues = struct {
 		Name string
 		Path cli.Path
+		// TLS.
+		CAPath   cli.Path
+		CertPath cli.Path
+		KeyPath  cli.Path
 	}{}
 )
 
@@ -37,7 +41,6 @@ func main() {
 	app := &cli.App{
 		Name:  "rfs",
 		Usage: "Replicated file system using FUSE bindings and peer-2-peer architecture",
-		//HelpName: "Replicated file system using FUSE bindings and peer-2-peer architecture",
 		Flags: []cli.Flag{
 			&cli.PathFlag{
 				Name:        "config",
@@ -54,12 +57,34 @@ func main() {
 				Destination: &flagValues.Name,
 				Aliases:     []string{"n"},
 			},
+			&cli.StringFlag{
+				Name:        "ca",
+				Usage:       "Path to Certificate Authority file.",
+				Destination: &flagValues.CAPath,
+				TakesFile:   true,
+			},
+			&cli.StringFlag{
+				Name:        "crt",
+				Usage:       "Path to the public certificate of the peer.",
+				Destination: &flagValues.CertPath,
+				TakesFile:   true,
+			},
+			&cli.StringFlag{
+				Name:        "key",
+				Usage:       "Path to the private key of the peer.",
+				Destination: &flagValues.KeyPath,
+				TakesFile:   true,
+			},
 		},
 		Action: func(context *cli.Context) error {
 			conf := mustReadConfig()
 			logging.Configure(conf.Logging)
 			log.Debug().Object("config", conf).Msg("loaded config")
 			protobuf.SetCompression(conf.Connection.Compression)
+
+			conf.Connection.TLS.CAPath = flagValues.CAPath
+			conf.Connection.TLS.CertPath = flagValues.CertPath
+			conf.Connection.TLS.KeyPath = flagValues.KeyPath
 
 			return run(context.Context, conf)
 		},
@@ -89,7 +114,7 @@ func run(ctx context.Context, conf *config.Config) error {
 			Interface("peers_config", conf.Peers).
 			Msg("invalid peer name provided, peer must be listed in the peers config")
 	}
-	conn := connection.NewPool(host, peers, conf.Connection, tlsconf.Default(conf.Connection.GetTLSVersion()))
+	conn := connection.NewPool(host, peers, conf.Connection, tlsconf.Default(conf.Connection.TLS))
 
 	p2pHost := p2p.NewHost(host, peers, conn, mir, conf.ReplicationTimeout)
 	p2pHost.Run(ctx)

@@ -65,8 +65,6 @@ type (
 
 	Connection struct {
 		DialBackoff Backoff `json:"dial_backoff" validate:"required"`
-		// TLSVersion describes both max and mind TLS version in the tls.Config.
-		TLSVersion string `json:"tls_version" validate:"required,oneof=1.3 1.2 1.1 1.0"`
 		// MessageBufferSize is the buffer of the global message channel onto which
 		// goroutines listening on peer Connection push received messages.
 		MessageBufferSize uint `json:"message_buffer_size" validate:"required,gt=0"`
@@ -78,6 +76,8 @@ type (
 		Network string `json:"network" validate:"required,oneof=tcp quic"`
 		// Compression defines content compression for gzip, for more details go to protobuf/gzip.go.
 		Compression string `json:"compression" validate:"required,oneof=NoCompression BestSpeed BestCompression DefaultCompression HuffmanOnly"`
+		// TLS holds paths to the certificates
+		TLS TLS `json:"tls" validate:"required"`
 	}
 
 	Backoff struct {
@@ -92,6 +92,17 @@ type (
 		// Max sets the maximum value after which reaching Backoff will no longer
 		// be increased.
 		Max time.Duration `json:"max" validate:"required,gt=0,gtefield=Initial"`
+	}
+
+	TLS struct {
+		// Version describes both max and mind TLS version in the tls.Config.
+		Version string `json:"tls_version" validate:"required,oneof=1.3 1.2 1.1 1.0"`
+		// CAPath points to Certificate Authority file.
+		CAPath string `json:"-"`
+		// CertPath points to the public certificate of the peer.
+		CertPath string `json:"-"`
+		// KeyPath points to the private key of the peer.
+		KeyPath string `json:"-"`
 	}
 
 	Logging struct {
@@ -134,12 +145,19 @@ func (p Peer) MarshalZerologObject(e *zerolog.Event) {
 
 func (c Connection) MarshalZerologObject(e *zerolog.Event) {
 	e.Object("backoff", c.DialBackoff).
-		Str("tls_version", c.TLSVersion).
+		Object("tls", c.TLS).
 		Uint("message_buffer_size", c.MessageBufferSize).
 		Stringer("send_recv_timeout", c.SendRecvTimeout).
 		Stringer("handshake_timeout", c.HandshakeTimeout).
 		Str("network", c.Network).
 		Str("compression", c.Compression)
+}
+
+func (t TLS) MarshalZerologObject(e *zerolog.Event) {
+	e.Str("tls_version", t.Version).
+		Str("ca_path", t.CAPath).
+		Str("crt_path", t.CertPath).
+		Str("key_path", t.KeyPath)
 }
 
 func (b Backoff) MarshalZerologObject(e *zerolog.Event) {
@@ -160,8 +178,8 @@ var tlsVersions = map[string]uint16{
 	"1.3": tls.VersionTLS13,
 }
 
-func (c Connection) GetTLSVersion() uint16 {
-	return tlsVersions[c.TLSVersion]
+func (t TLS) GetTLSVersion() uint16 {
+	return tlsVersions[t.Version]
 }
 
 var validate = validator.New()
