@@ -26,12 +26,15 @@ type (
 		io.Closer
 		Run(ctx context.Context)
 		Broadcast(ctx context.Context, data []byte) error
-		Receive() (data []byte, err error)
+		ReceiveC() <-chan connection.Message
 	}
 )
 
 const defaultReplicationTimeout = 5 * time.Minute
 
+// NewHost creates new Host with provided arguments while also initialising
+// both transactions and conflictsResolver and setting default replication timeout
+// if none was provided.
 func NewHost(
 	host *config.Peer,
 	peers config.Peers,
@@ -53,32 +56,65 @@ func NewHost(
 	}
 }
 
-// Host represents a single peer we're running in the p2p network.
-type Host struct {
-	config.Peer
-	Conn               Connection
-	Mirror             Mirror
-	transactions       *Transactions
-	peers              config.Peers
-	conflicts          *conflictsResolver
-	replicationTimeout time.Duration
-}
+type (
+	// Host represents a single peer we're running in the p2p network.
+	Host struct {
+		config.Peer
+		Conn   Connection
+		Mirror Mirror
+		// transactions caches existing replication operations.
+		transactions *transactions
+		peers        config.Peers
+		// conflicts helps with detecting and resolving potential conflicts,
+		// like performing operations on the same path.
+		conflicts *conflictsResolver
+		// replicationTimeout describes how long are we willing to wait for a
+		// replication transaction to be resolved before dropping it for good.
+		replicationTimeout time.Duration
+		// cancel main context associated with the listen loop.
+		cancel context.CancelFunc
+	}
+)
 
 // Run kicks of connection processes for the Host and begins listening for incoming messages.
 func (h *Host) Run(ctx context.Context) {
+	ctx, h.cancel = context.WithCancel(ctx)
 	log.Info().Object("host", h).Msg("initializing p2p network connection")
 	h.Conn.Run(ctx)
 	go h.listen(ctx)
 }
 
-// Close closes the underlying Connection.
+// Close first closes the underlying Connection and then
+// awaits for all the active transactions to end.
 func (h *Host) Close() error {
-	return h.Conn.Close()
+	closeErr := h.Conn.Close()
+	for {
+		if len(h.transactions.ts) == 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	h.cancel()
+	return closeErr
 }
 
+// ErrNotPermitted is the main error of concern as it describes all the scenarios
+// when replication request is rejected due to either:
+// - lack of consensus among peers
+// - conflicting replication requests
 var ErrNotPermitted = errors.New("operation was not permitted")
 
-// Replicate TODO document me.
+// Replicate broadcasts protobuf.Request and waits for all peers to respond with
+// protobuf.Response. It the gathers these responses and processes them do decide
+// if the replication was successful (if the peers agreed to do so). In case the
+// permission for replication was not granted it returns ErrNotPermitted.
+//
+// Replicate first tries to detect if there are any conflicts with the ongoing
+// transactions before broadcasting the request.
+//
+// If it failed to send the message to all the peers, it returns an error immediately,
+// if it failed to send it to only a subset of the peers it will await only for responses
+// of these peers.
 func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 	tid := uuid.New().String()
 	message, err := protobuf.NewRequestMessage(tid, h.Name, request)
@@ -143,14 +179,26 @@ func (h *Host) LoadConflictsClock() uint64 {
 // listen blocks until new *protobuf.Message is received and finds or creates
 // the right transcation for it.
 func (h *Host) listen(ctx context.Context) {
+	var (
+		msg *protobuf.Message
+		err error
+	)
 	for {
-		msg, err := h.receive()
-		if err != nil {
-			log.Err(err).
-				Object("host", h).
-				Msg("Error while collecting a message")
-			continue
+		select {
+		case <-ctx.Done():
+			return
+		case m := <-h.Conn.ReceiveC():
+			if m.Err != nil {
+				log.Err(err).Object("host", h).Msg("Error while collecting a message")
+				continue
+			}
+			msg, err = protobuf.ReadMessage(m.Data)
+			if err != nil {
+				log.Err(err).Object("host", h).Msg("Failed to unmarshal protobuf message")
+				continue
+			}
 		}
+
 		trans, created := h.transactions.Put(msg)
 		if created {
 			go func() {
@@ -164,7 +212,15 @@ func (h *Host) listen(ctx context.Context) {
 	}
 }
 
-func (h *Host) processResponses(trans *Transaction) error {
+// processResponses goes through all protobuf.Response for a single transaction.
+// If any protobuf.Response is protobuf.Response_NACK, it will return ErrNotPermitted.
+// If any nack responses are detected it counts their occurrences and if the only
+// protobuf.Response_Error was protobuf.Response_ERR_TRANSACTION_CONFLICT, then
+// it will increment the conflictsResolver.clock.
+// The reasoning here is that we only want to treat the transaction as rejected during
+// conflicts resolution if it was the only error, otherwise, even If the conflict was
+// resolved in our favor, we would still fail, so who cares.
+func (h *Host) processResponses(trans *transaction) error {
 	errorsCtr := make(map[protobuf.Response_Error]uint)
 	var rejected bool
 	for _, resp := range trans.Responses {
@@ -208,17 +264,18 @@ func (h *Host) broadcast(ctx context.Context, msg *protobuf.Message) error {
 	return nil
 }
 
-// receive a single protobuf.Message from the network.
-// It blocks until the message is received.
-func (h *Host) receive() (*protobuf.Message, error) {
-	data, err := h.Conn.Receive()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to receive message from peer")
-	}
-	return protobuf.ReadMessage(data)
-}
-
-func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) error {
+// handleTransaction is a process spawned by listen, when either protobuf.Response or
+// protobuf.Request comes which is not part of any transaction yet.
+// It behaves similar to Replicate, but is the process run on the requested peer's side.
+// In addition to gathering all protobuf.Response from other peers it also performs
+// a broadcast of it's own response when new protobuf.Request comes associated with this
+// transaction. The response is consulted using Mirror.Consult method which returns
+// a ready-to-be-server protobuf.Response.
+// Similar to broadcast, when all responses and a single request are gathered it proceeds to
+// check if any protobuf.Response_NACK was served (including its own response) and returns
+// ErrNotPermitted if so.
+// If the replication was successful it calls Mirror.Mirror with the transaction's request.
+func (h *Host) handleTransaction(ctx context.Context, transaction *transaction) error {
 	ctx, cancel := context.WithTimeout(ctx, h.replicationTimeout)
 	defer cancel()
 	var (

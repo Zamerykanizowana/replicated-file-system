@@ -20,7 +20,7 @@ func NewPool(
 	connConf *config.Connection,
 	tlsConf *tls.Config,
 ) *Pool {
-	msgs := make(chan message, connConf.MessageBufferSize)
+	msgs := make(chan Message, connConf.MessageBufferSize)
 
 	activeConnections := new(atomic.Int64)
 	whitelist := make(map[peerName]struct{}, len(peers))
@@ -70,8 +70,8 @@ type (
 		dialFunc quicDial
 		// pool is the map storing each Connection. The key is peer's name.
 		pool map[peerName]*Connection
-		// msgs is a buffered channel onto which each Connection.Send publishes message.
-		msgs              chan message
+		// msgs is a buffered channel onto which each Connection.Send publishes Message.
+		msgs              chan Message
 		dialBackoffConfig *config.Backoff
 		// connectionEstablishingTimeout sets the timeout for both dialed and accepted connections handling.
 		connectionEstablishingTimeout time.Duration
@@ -85,10 +85,10 @@ type (
 		// activeConnections tells us the number of active (StatusAlive) Connection.
 		activeConnections *atomic.Int64
 	}
-	// message allows passing errors along with data through channels.
-	message struct {
-		data []byte
-		err  error
+	// Message allows passing errors along with data through channels.
+	Message struct {
+		Data []byte
+		Err  error
 	}
 	// peerName is a type alias serving solely code readability.
 	peerName = string
@@ -188,11 +188,16 @@ func (p *Pool) Broadcast(ctx context.Context, data []byte) error {
 	return nil
 }
 
-// Receive reads one message from the messages channel, it will block until
-// a message appears on the channel.
+// Receive reads one Message from the messages channel, it will block until
+// a Message appears on the channel.
 func (p *Pool) Receive() ([]byte, error) {
 	m := <-p.msgs
-	return m.data, m.err
+	return m.Data, m.Err
+}
+
+// ReceiveC exposes channel for reading incoming Message.
+func (p *Pool) ReceiveC() <-chan Message {
+	return p.msgs
 }
 
 // listen starts accepting connections and runs Connection.Listen for all the

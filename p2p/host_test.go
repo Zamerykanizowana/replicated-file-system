@@ -77,7 +77,7 @@ func TestHost_Replicate(t *testing.T) {
 		legolasErr := errors.New("some error")
 		mErr.Append("Legolas", legolasErr)
 		conn := &mockConnection{
-			receive:      make(chan []byte),
+			receive:      make(chan connection.Message),
 			broadcastErr: mErr,
 		}
 		host = NewHost(
@@ -94,15 +94,11 @@ func TestHost_Replicate(t *testing.T) {
 		go func() {
 			time.Sleep(10 * time.Millisecond)
 			// We're waiting only for Gimlis response now.
-			conn.receive <- func() []byte {
+			conn.receive <- func() connection.Message {
 				var tid string
 				for tid = range host.transactions.ts {
 				} // Loop once to get the existing transaction id.
-				message := protobuf.NewResponseMessage(tid, "Gimli",
-					&protobuf.Response{Type: protobuf.Response_ACK})
-				data, err := proto.Marshal(message)
-				require.NoError(t, err)
-				return data
+				return newMessage(t, tid, "Gimli", &protobuf.Response{Type: protobuf.Response_ACK})
 			}()
 		}()
 
@@ -134,7 +130,7 @@ func TestHost_processResponses(t *testing.T) {
 		for _, resp := range responses {
 			resp.Type = protobuf.Response_NACK
 		}
-		err := host.processResponses(&Transaction{Responses: responses})
+		err := host.processResponses(&transaction{Responses: responses})
 
 		require.Error(t, err)
 		assert.Equal(t, ErrNotPermitted, err)
@@ -149,7 +145,7 @@ func TestHost_processResponses(t *testing.T) {
 		for _, resp := range responses {
 			resp.Type = protobuf.Response_NACK
 		}
-		err := host.processResponses(&Transaction{Responses: responses})
+		err := host.processResponses(&transaction{Responses: responses})
 
 		require.Error(t, err)
 		assert.Equal(t, ErrNotPermitted, err)
@@ -157,15 +153,144 @@ func TestHost_processResponses(t *testing.T) {
 	})
 }
 
-type mockMirror struct{}
+func TestHost_handleTransaction(t *testing.T) {
+	setup := func() (host *Host, conn *mockConnection, mir *mockMirror) {
+		conn = &mockConnection{receive: make(chan connection.Message)}
+		mir = &mockMirror{}
+		host = NewHost(
+			&config.Peer{Name: "Aragorn"},
+			config.Peers{
+				{Name: "Legolas", Address: "https://mirkwood:9011"},
+				{Name: "Gimli", Address: "https://the-lonely-mountain:9011"},
+			},
+			conn, mir, 10*time.Second)
+		return
+	}
 
-func (m mockMirror) Mirror(request *protobuf.Request) error { return nil }
+	t.Run("golden path, everything goes smooth", func(t *testing.T) {
+		host, conn, mir := setup()
+		host.Run(context.Background())
 
-func (m mockMirror) Consult(request *protobuf.Request) *protobuf.Response { return protobuf.ACK() }
+		conn.receive <- func() connection.Message {
+			return newMessage(t, "123", "Gimli", &protobuf.Response{Type: protobuf.Response_ACK})
+		}()
+
+		conn.receive <- func() connection.Message {
+			return newMessage(t, "123", "Legolas", &protobuf.Request{
+				Type:     protobuf.Request_CREATE,
+				Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere"}})
+		}()
+
+		// This will make sure all active transactions are done.
+		// We're also testing Close here :)
+		_ = host.Close()
+
+		assert.Len(t, host.transactions.ts, 0)
+		require.Len(t, mir.calledWithRequests, 1)
+		assert.Equal(t, "/somewhere", mir.calledWithRequests[0].Metadata.RelativePath)
+		assert.Equal(t, protobuf.Request_CREATE, mir.calledWithRequests[0].Type)
+	})
+
+	t.Run("response is consulted and NACK", func(t *testing.T) {
+		host, conn, mir := setup()
+		mir.consultResponse = protobuf.NACK(protobuf.Response_ERR_ALREADY_EXISTS, errors.New("test"))
+		defer func() { mir.consultResponse = nil }()
+		host.Run(context.Background())
+
+		conn.receive <- func() connection.Message {
+			return newMessage(t, "123", "Legolas", &protobuf.Response{Type: protobuf.Response_ACK})
+		}()
+
+		conn.receive <- func() connection.Message {
+			return newMessage(t, "123", "Gimli", &protobuf.Request{
+				Type:     protobuf.Request_CREATE,
+				Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere"}})
+		}()
+
+		_ = host.Close()
+
+		assert.Len(t, host.transactions.ts, 0)
+		require.Len(t, mir.consultedRequests, 1)
+		assert.Equal(t, "/somewhere", mir.consultedRequests[0].Metadata.RelativePath)
+		assert.Equal(t, protobuf.Request_CREATE, mir.consultedRequests[0].Type)
+		assert.Len(t, mir.calledWithRequests, 0)
+	})
+
+	t.Run("response is consulted and ACK, but conflict is detected", func(t *testing.T) {
+		host, conn, mir := setup()
+		host.Run(context.Background())
+
+		conn.receive <- func() connection.Message {
+			return newMessage(t, "321", "Legolas", &protobuf.Request{
+				Type:     protobuf.Request_CREATE,
+				Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere"},
+				Clock:    1})
+		}()
+
+		conn.receive <- func() connection.Message {
+			return newMessage(t, "123", "Gimli", &protobuf.Request{
+				Type:     protobuf.Request_MKDIR,
+				Metadata: &protobuf.Request_Metadata{RelativePath: "/somewhere"},
+				Clock:    0})
+		}()
+
+		conn.receive <- func() connection.Message {
+			return newMessage(t, "123", "Legolas", &protobuf.Response{Type: protobuf.Response_ACK})
+		}()
+
+		conn.receive <- func() connection.Message {
+			return newMessage(t, "321", "Gimli", &protobuf.Response{Type: protobuf.Response_ACK})
+		}()
+
+		_ = host.Close()
+
+		assert.Len(t, host.transactions.ts, 0)
+		require.Len(t, mir.consultedRequests, 2)
+		assert.Len(t, mir.calledWithRequests, 1)
+		// Legolas wins conflict!
+		assert.Equal(t, protobuf.Request_CREATE, mir.calledWithRequests[0].Type)
+	})
+}
+
+func newMessage(t *testing.T, tid, peerName string, typ interface{}) connection.Message {
+	var (
+		pm  *protobuf.Message
+		err error
+	)
+	switch v := typ.(type) {
+	case *protobuf.Request:
+		pm, err = protobuf.NewRequestMessage(tid, peerName, v)
+		require.NoError(t, err)
+	case *protobuf.Response:
+		pm = protobuf.NewResponseMessage(tid, peerName, v)
+	}
+	data, err := proto.Marshal(pm)
+	require.NoError(t, err)
+	return connection.Message{Data: data}
+}
+
+type mockMirror struct {
+	calledWithRequests []*protobuf.Request
+	consultedRequests  []*protobuf.Request
+	consultResponse    *protobuf.Response
+}
+
+func (m *mockMirror) Mirror(request *protobuf.Request) error {
+	m.calledWithRequests = append(m.calledWithRequests, request)
+	return nil
+}
+
+func (m *mockMirror) Consult(request *protobuf.Request) *protobuf.Response {
+	m.consultedRequests = append(m.consultedRequests, request)
+	if m.consultResponse == nil {
+		return protobuf.ACK()
+	}
+	return m.consultResponse
+}
 
 type mockConnection struct {
 	broadcastErr error
-	receive      chan []byte
+	receive      chan connection.Message
 }
 
 func (m mockConnection) Close() error { return nil }
@@ -174,7 +299,4 @@ func (m mockConnection) Run(_ context.Context) {}
 
 func (m mockConnection) Broadcast(_ context.Context, _ []byte) error { return m.broadcastErr }
 
-func (m mockConnection) Receive() (data []byte, err error) {
-	data = <-m.receive
-	return
-}
+func (m mockConnection) ReceiveC() <-chan connection.Message { return m.receive }

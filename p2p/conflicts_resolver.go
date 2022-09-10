@@ -31,7 +31,7 @@ var ErrTransactionConflict = errors.New("transaction conflict detected and resol
 
 // DetectAndResolveConflict goes through all existing transactions and checks if any of them
 // are conflicting with the incoming message, it detects conflict if all these conditions are met:
-//   - Transaction initiator is not the same peer which sent the message. We don't want to
+//   - transaction initiator is not the same peer which sent the message. We don't want to
 //     check conflicts for the other peers, they should've done it themselves.
 //   - RelativePath and NewRelativePath are the same.
 //
@@ -61,7 +61,7 @@ var ErrTransactionConflict = errors.New("transaction conflict detected and resol
 // If no conflicts are detected or detected conflicts are resolved in favor of the
 // incoming request, then it returns no error.
 func (c *conflictsResolver) DetectAndResolveConflict(
-	trans *Transactions,
+	trans *transactions,
 	msg *protobuf.Message,
 ) error {
 	req := msg.GetRequest()
@@ -69,11 +69,11 @@ func (c *conflictsResolver) DetectAndResolveConflict(
 		log.Panic().Msg("BUG: expected protobuf.Request in the message, fix the code!")
 	}
 	for _, t := range trans.ts {
-		// If the Transactions has been initialized through protobuf.Response, skip detection.
+		// If the transactions has been initialized through protobuf.Response, skip detection.
 		if t.Request == nil {
 			continue
 		}
-		// Let us not decide for the other peer. Don't check conflicts for our own Transactions either.
+		// Let us not decide for the other peer. Don't check conflicts for our own transactions either.
 		if t.InitiatorName == msg.PeerName {
 			continue
 		}
@@ -83,7 +83,7 @@ func (c *conflictsResolver) DetectAndResolveConflict(
 				t.Request.Metadata.NewRelativePath == req.Metadata.NewRelativePath; !conflict {
 			continue
 		}
-		// If the request clock is smaller than the Transactions, return conflict.
+		// If the request clock is smaller than the transactions, return conflict.
 		if req.Clock < t.Request.Clock {
 			return ErrTransactionConflict
 		}

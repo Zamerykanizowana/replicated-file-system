@@ -20,7 +20,7 @@ func NewConnection(
 	host *config.Peer,
 	peer *config.Peer,
 	timeout time.Duration,
-	sink chan<- message,
+	sink chan<- Message,
 	activeConnections *atomic.Int64,
 ) *Connection {
 	return &Connection{
@@ -63,7 +63,7 @@ type (
 		// netOpTimeout is the timeout on all network operations, both send and recv.
 		netOpTimeout time.Duration
 		// sink is used to forward received messages further down the pipeline.
-		sink chan<- message
+		sink chan<- Message
 		// activeConnections should be incremented when Connection is StatusAlive and decremented
 		// when it goes to StatusDead.
 		activeConnections *atomic.Int64
@@ -159,7 +159,7 @@ func (c *Connection) watchConnection(conn quic.Connection) {
 
 // Listen runs receiver loop, waiting for new messages.
 // If the Connection.Status is StatusDead it will block until WaitForOpen returns.
-// The received data along with any errors is wrapped by message struct and sent
+// The received data along with any errors is wrapped by Message struct and sent
 // to the sink channel.
 func (c *Connection) Listen(ctx context.Context) {
 	for {
@@ -170,10 +170,10 @@ func (c *Connection) Listen(ctx context.Context) {
 		}
 		data, err := c.Recv(ctx)
 		if err != nil {
-			c.sink <- message{err: err}
+			c.sink <- Message{Err: err}
 			continue
 		}
-		c.sink <- message{data: data}
+		c.sink <- Message{Data: data}
 	}
 }
 
