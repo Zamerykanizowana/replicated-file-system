@@ -1,10 +1,10 @@
-FROM golang:1.18.2-alpine3.14 as go-dependencies-cache
+FROM golang:1.19-alpine as go-dependencies-cache
 
 WORKDIR /src
 
 COPY go.mod go.sum /src/
 
-RUN apk add git bash
+RUN apk add install git bash
 
 RUN go mod download
 
@@ -19,6 +19,8 @@ COPY . .
 RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o "/artifacts/rfs" "${PWD}"
 
 FROM scratch
+
+ENV USER="/home/rfs"
 
 COPY --from=builder "/artifacts/rfs" /bin/rfs
 

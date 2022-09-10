@@ -132,3 +132,9 @@ The system is not 100% fail proof, the greatest danger happens when the `rfs` pr
 (this means no graceful shutdown was achieved) closed during one of the transactions, then we might run
 into a dirty state if the peer has not mirrored (or finished via loopback FS) the transaction yet.
 It will be missing one or more FS changes and it will require manual fixing with `rfs` unplugged.
+
+At the moment we haven't yet figured out how to run `rfs` in Docker:
+
+```text
+unable to mount fuse filesystem: exec: \"/bin/fusermount\": stat /bin/fusermount: no such file or directory
+```
