@@ -30,40 +30,48 @@ type (
 	}
 )
 
+const defaultReplicationTimeout = 5 * time.Minute
+
 func NewHost(
 	host *config.Peer,
 	peers config.Peers,
 	conn Connection,
 	mirror Mirror,
+	replicationTimeout time.Duration,
 ) *Host {
+	if replicationTimeout == 0 {
+		replicationTimeout = defaultReplicationTimeout
+	}
 	return &Host{
-		Peer:         *host,
-		Conn:         conn,
-		transactions: newTransactions(),
-		peers:        peers,
-		Mirror:       mirror,
-		conflicts:    newConflictsResolver(),
+		Peer:               *host,
+		Conn:               conn,
+		transactions:       newTransactions(),
+		peers:              peers,
+		Mirror:             mirror,
+		conflicts:          newConflictsResolver(),
+		replicationTimeout: replicationTimeout,
 	}
 }
 
 // Host represents a single peer we're running in the p2p network.
 type Host struct {
 	config.Peer
-	Conn         Connection
-	Mirror       Mirror
-	transactions *Transactions
-	peers        config.Peers
-	conflicts    *conflictsResolver
+	Conn               Connection
+	Mirror             Mirror
+	transactions       *Transactions
+	peers              config.Peers
+	conflicts          *conflictsResolver
+	replicationTimeout time.Duration
 }
 
-// Run kicks of connection processes for the Host.
+// Run kicks of connection processes for the Host and begins listening for incoming messages.
 func (h *Host) Run(ctx context.Context) {
 	log.Info().Object("host", h).Msg("initializing p2p network connection")
 	h.Conn.Run(ctx)
 	go h.listen(ctx)
 }
 
-// Close closes the underlying connection.Pool.
+// Close closes the underlying Connection.
 func (h *Host) Close() error {
 	return h.Conn.Close()
 }
@@ -72,8 +80,6 @@ var (
 	ErrTransactionConflict = errors.New("transaction conflict detected and resolved in favor of other peer")
 	ErrNotPermitted        = errors.New("operation was not permitted")
 )
-
-const replicationTimeout = 5 * time.Minute
 
 // Replicate TODO document me.
 func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
@@ -102,7 +108,7 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, replicationTimeout)
+	ctx, cancel := context.WithTimeout(ctx, h.replicationTimeout)
 	defer cancel()
 	var msg *protobuf.Message
 	for i := 0; i < sentMessagesCount; i++ {
@@ -185,7 +191,7 @@ func (h *Host) receive() (*protobuf.Message, error) {
 }
 
 func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) error {
-	ctx, cancel := context.WithTimeout(ctx, replicationTimeout)
+	ctx, cancel := context.WithTimeout(ctx, h.replicationTimeout)
 	defer cancel()
 	var (
 		ourResponse protobuf.Response_Type

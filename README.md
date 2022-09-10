@@ -113,7 +113,8 @@ Here's an example:
   },
   "logging": {
     "level": "info"
-  }
+  },
+  "replication_timeout":"300000000000"
 }
 ```
 
@@ -121,4 +122,13 @@ Here's an example:
 
 A common issue occurs when we kill the `rfs` process when the virtual (mounted) directory is still busy.
 You will get an error log explaining what's wrong and what manual steps should be taken to fix the issue.
-All you need to do is manually unmount the directory yourself
+All you need to do is manually unmount the directory yourself by calling `fusermount`:
+
+```shell
+fusermount -u ${VIRTUAL_MOUNT_PATH}
+```
+
+The system is not 100% fail proof, the greatest danger happens when the `rfs` process is abruptly
+(this means no graceful shutdown was achieved) closed during one of the transactions, then we might run
+into a dirty state if the peer has not mirrored (or finished via loopback FS) the transaction yet.
+It will be missing one or more FS changes and it will require manual fixing with `rfs` unplugged.

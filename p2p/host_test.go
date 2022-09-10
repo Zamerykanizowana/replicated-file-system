@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -11,7 +12,12 @@ import (
 )
 
 func TestHost_Replicate(t *testing.T) {
-	host := NewHost(&config.Peer{Name: "Ben"}, config.Peers{}, &mockConnection{}, &mockMirror{})
+	host := NewHost(
+		&config.Peer{Name: "Ben"},
+		config.Peers{},
+		&mockConnection{},
+		&mockMirror{},
+		1*time.Second)
 	ctx := context.Background()
 	err := host.Replicate(ctx, &protobuf.Request{})
 	assert.NoError(t, err)
@@ -20,13 +26,11 @@ func TestHost_Replicate(t *testing.T) {
 type mockMirror struct{}
 
 func (m mockMirror) Mirror(request *protobuf.Request) error {
-	//TODO implement me
-	panic("implement me")
+	return nil
 }
 
 func (m mockMirror) Consult(request *protobuf.Request) *protobuf.Response {
-	//TODO implement me
-	panic("implement me")
+	return protobuf.ACK()
 }
 
 type mockConnection struct{}

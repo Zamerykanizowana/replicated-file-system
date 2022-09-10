@@ -41,5 +41,6 @@
   },
   "logging": {
     "level": "info"
-  }
+  },
+  "replication_timeout":"300000000000"
 }

@@ -42,10 +42,11 @@ func Read(path string) *Config {
 
 type (
 	Config struct {
-		Connection *Connection `json:"connection" validate:"required"`
-		Peers      Peers       `json:"peers" validate:"required,gt=0,unique=Name"`
-		Paths      *Paths      `json:"paths" validate:"required"`
-		Logging    *Logging    `json:"logging" validate:"required"`
+		Connection         *Connection   `json:"connection" validate:"required"`
+		Peers              Peers         `json:"peers" validate:"required,gt=0,unique=Name"`
+		Paths              *Paths        `json:"paths" validate:"required"`
+		Logging            *Logging      `json:"logging" validate:"required"`
+		ReplicationTimeout time.Duration `json:"replicationTimeout" validate:"gt=1000000000"`
 	}
 
 	Peers []*Peer

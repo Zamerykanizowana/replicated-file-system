@@ -272,7 +272,8 @@ func hostStructForName(t *testing.T, name string) *p2p.Host {
 			peers,
 			conf.Connection,
 			testTLSConf(t, name)),
-		&mirrorMock{})
+		&mirrorMock{},
+		5*time.Second)
 }
 
 func mustClose(t *testing.T, closer io.Closer) {
