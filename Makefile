@@ -40,7 +40,7 @@ build: cert/create ## Build binary with embedded TLS certificate.
 	mkdir -p ${OUT_DIR}
 	go build -ldflags "${LDFLAGS}" -o ${OUT} main.go
 
-build/full: go/format go/verify go/test build ## Format, verify and test before building the binary.
+build/full: format verify test build ## Format, verify and test before building the binary.
 
 build/docker: cert/create ## Build docker image for peer=PEER.
 	DOCKER_BUILDKIT=1 \
