@@ -46,7 +46,7 @@ type (
 		Peers              Peers         `json:"peers" validate:"required,gt=0,unique=Name"`
 		Paths              *Paths        `json:"paths" validate:"required"`
 		Logging            *Logging      `json:"logging" validate:"required"`
-		ReplicationTimeout time.Duration `json:"replicationTimeout" validate:"gt=1000000000"`
+		ReplicationTimeout time.Duration `json:"replicationTimeout"`
 	}
 
 	Peers []*Peer

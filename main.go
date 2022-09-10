@@ -91,7 +91,7 @@ func run(ctx context.Context, conf *config.Config) error {
 	}
 	conn := connection.NewPool(host, peers, conf.Connection, tlsconf.Default(conf.Connection.GetTLSVersion()))
 
-	p2pHost := p2p.NewHost(host, peers, conn, mir)
+	p2pHost := p2p.NewHost(host, peers, conn, mir, conf.ReplicationTimeout)
 	p2pHost.Run(ctx)
 
 	server := rfs.NewServer(*conf, p2pHost, mir)
