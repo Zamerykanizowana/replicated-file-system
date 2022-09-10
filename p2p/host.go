@@ -112,11 +112,19 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case msg = <-trans.NotifyChan:
+			// Message was already set in transaction by listen(),
+			// no need to do anything more here than log it.
+			log.Info().
+				Object("host", h).
+				Object("msg", msg).
+				Msg("message received")
+			continue
 		}
-		log.Info().
-			Object("host", h).
-			Object("msg", msg).
-			Msg("message received")
+	}
+	// We gathered all responses, but we don't care what came,
+	// since we know one or more peers did not get the broadcast.
+	if err != nil {
+		return err
 	}
 
 	return h.processResponses(trans)
@@ -130,6 +138,30 @@ func (h *Host) SetConflictsClock(v uint64) {
 // LoadConflictsClock loads the conflicts clock atomically.
 func (h *Host) LoadConflictsClock() uint64 {
 	return h.conflicts.clock.Load()
+}
+
+// listen blocks until new *protobuf.Message is received and finds or creates
+// the right transcation for it.
+func (h *Host) listen(ctx context.Context) {
+	for {
+		msg, err := h.receive()
+		if err != nil {
+			log.Err(err).
+				Object("host", h).
+				Msg("Error while collecting a message")
+			continue
+		}
+		trans, created := h.transactions.Put(msg)
+		if created {
+			go func() {
+				if err = h.handleTransaction(ctx, trans); err != nil {
+					log.Err(err).Send()
+				}
+				h.transactions.Delete(trans.Tid)
+			}()
+		}
+		trans.NotifyChan <- msg
+	}
 }
 
 func (h *Host) processResponses(trans *Transaction) error {
@@ -239,26 +271,4 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *Transaction) 
 	}
 
 	return h.Mirror.Mirror(transaction.Request)
-}
-
-func (h *Host) listen(ctx context.Context) {
-	for {
-		msg, err := h.receive()
-		if err != nil {
-			log.Err(err).
-				Object("host", h).
-				Msg("Error while collecting a message")
-			continue
-		}
-		trans, created := h.transactions.Put(msg)
-		if created {
-			go func() {
-				if err = h.handleTransaction(ctx, trans); err != nil {
-					log.Err(err).Send()
-				}
-				h.transactions.Delete(trans.Tid)
-			}()
-		}
-		trans.NotifyChan <- msg
-	}
 }
