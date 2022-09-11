@@ -87,7 +87,6 @@ func (h *Host) Run(ctx context.Context) {
 // Close first closes the underlying Connection and then
 // awaits for all the active transactions to end.
 func (h *Host) Close() error {
-	closeErr := h.Conn.Close()
 	log.Info().Msg("Waiting for all active transactions to be closed")
 	for {
 		if len(h.transactions.ts) == 0 {
@@ -95,7 +94,9 @@ func (h *Host) Close() error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	// FIXME this might result in a new transaction leaking in before we close the connection for good.
 	h.cancel()
+	closeErr := h.Conn.Close()
 	return closeErr
 }
 
