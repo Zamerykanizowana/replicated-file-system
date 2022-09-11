@@ -18,7 +18,7 @@ DOCKER_IMAGE = "${APP_NAME}:${GIT_BRANCH}-${GIT_COMMIT}"
 
 CERT_AGE := -days 365
 CERT_KEY_SIZE = 4096
-CERT_PATH ?= connection/cert
+CERT_PATH ?= ${PWD}/connection/cert
 DOCKER_CERT_PATH ?= /hom/rfs/cert
 
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
@@ -35,7 +35,7 @@ run/docker/%: ## Run docker image with the name of the peer as the target variab
 		--rm -it \
 		--privileged --cap-add SYS_ADMIN \
 		--name "${APP_NAME}-$(*F)" \
-		-v ${PWD}/${CERT_PATH}:${DOCKER_CERT_PATH} \
+		-v ${CERT_PATH}:${DOCKER_CERT_PATH} \
 		${DOCKER_IMAGE} \
 			--ca ${DOCKER_CERT_PATH}/ca.crt \
 			--crt ${DOCKER_CERT_PATH}/$(*F).crt \
