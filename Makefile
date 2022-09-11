@@ -41,7 +41,6 @@ run/docker/%: ## Run docker image with the name of the peer as the target variab
 			--crt ${DOCKER_CERT_PATH}/$(*F).crt \
 			--key ${DOCKER_CERT_PATH}/$(*F).key
 
-
 build: cert/create ## Build binary with embedded TLS certificate.
 	@mkdir -p ${OUT_DIR}
 	go build -ldflags "${LDFLAGS}" -o ${OUT} main.go
@@ -122,7 +121,6 @@ help: ## Print this help message.
 	@printf '\nUsage:\n  	${YELLOW}make${RESET} ${GREEN}<target>${RESET}\n\nTargets:\n'
 	@grep -P '^[a-zA-Z_/-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort |\
  		awk 'BEGIN {FS = ":.*?## "}; {printf "	\033[36m%-30s\033[0m  %s\n", $$1, $$2}'
-
 
 GREEN  := $(shell tput -Txterm setaf 2)
 YELLOW := $(shell tput -Txterm setaf 3)
