@@ -19,7 +19,7 @@ DOCKER_IMAGE = "${APP_NAME}:${GIT_BRANCH}-${GIT_COMMIT}"
 CERT_AGE := -days 365
 CERT_KEY_SIZE = 4096
 CERT_PATH ?= ${PWD}/connection/cert
-DOCKER_CERT_PATH ?= /hom/rfs/cert
+DOCKER_CERT_PATH ?= /home/rfs/cert
 
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
@@ -30,24 +30,24 @@ all: help
 run: ## Run the binary under OUT as peer=PEER and config=CONFIGPATH.
 	./${OUT} -n ${PEER} -c ${CONFIGPATH}
 
-run/docker/%: ## Run docker image with the name of the peer as the target variable.
+run/docker: cert/create ## Run docker image for peer=${PEER} mounting cert under ${CERT_PATH}:${DOCKER_CERT_PATH}.
 	docker run \
 		--rm -it \
 		--privileged --cap-add SYS_ADMIN \
-		--name "${APP_NAME}-$(*F)" \
+		--name "${APP_NAME}-${PEER}" \
 		-v ${CERT_PATH}:${DOCKER_CERT_PATH} \
 		${DOCKER_IMAGE} \
 			--ca ${DOCKER_CERT_PATH}/ca.crt \
-			--crt ${DOCKER_CERT_PATH}/$(*F).crt \
-			--key ${DOCKER_CERT_PATH}/$(*F).key
+			--crt ${DOCKER_CERT_PATH}/${PEER}.crt \
+			--key ${DOCKER_CERT_PATH}/${PEER}.key
 
-build: cert/create ## Build binary with embedded TLS certificate.
+build: cert/create ## Build rfs binary along with TLS certificate.
 	@mkdir -p ${OUT_DIR}
 	go build -ldflags "${LDFLAGS}" -o ${OUT} main.go
 
 build/full: format verify test build ## Format, verify and test before building the binary.
 
-build/docker: cert/create ## Build docker image for peer=PEER.
+build/docker: ## Build docker image for peer=PEER along with TLS certificate.
 	DOCKER_BUILDKIT=1 \
 	docker build \
 		--file "${PWD}/Dockerfile" \
@@ -66,7 +66,7 @@ cert/generate-ca: ## Generate Certificate Authority using RSA under CERT_PATH wi
 		-keyout ca.key
 
 cert/create: cert/generate-peer-key cert/generate-peer-csr cert/sign-csr ## Create peer certificate.
-	@printf '\n${YELLOW}Generated ${PEER} certificate, which will be embedded and used for TLS${RESET}\n'
+	@printf '\n${YELLOW}Generated ${PEER} certificate, which will be used for TLS${RESET}\n'
 	@printf '${YELLOW}Make sure the same CA (certificate authority) key is used to sign all peer certificates${RESET}\n'
 
 cert/generate-peer-key: ## Generate private key using RSA for peer under CERT_PATH with size=CERT_KEY_SIZE.
