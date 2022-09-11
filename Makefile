@@ -27,8 +27,11 @@ export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
 all: help
 
-run: ## Run the binary under OUT as peer=PEER and config=CONFIGPATH.
-	./${OUT} -n ${PEER} -c ${CONFIGPATH}
+run: cert/create ## Run the binary under OUT as peer=PEER and config=CONFIGPATH and create TLS certificate.
+	./${OUT} -n ${PEER} -c ${CONFIGPATH} \
+		--ca ${CERT_PATH}/ca.crt \
+		--crt ${CERT_PATH}/${PEER}.crt \
+		--key ${CERT_PATH}/${PEER}.key
 
 run/docker: cert/create ## Run docker image for peer=${PEER} mounting cert under ${CERT_PATH}:${DOCKER_CERT_PATH}.
 	docker run \
@@ -42,7 +45,7 @@ run/docker: cert/create ## Run docker image for peer=${PEER} mounting cert under
 			--crt ${DOCKER_CERT_PATH}/${PEER}.crt \
 			--key ${DOCKER_CERT_PATH}/${PEER}.key
 
-build: cert/create ## Build rfs binary along with TLS certificate.
+build: ## Build rfs binary.
 	@mkdir -p ${OUT_DIR}
 	go build -ldflags "${LDFLAGS}" -o ${OUT} main.go
 

@@ -42,7 +42,7 @@ const (
 )
 
 func TestMain(m *testing.M) {
-	logging.Configure(&config.Logging{Level: "debug"})
+	logging.Configure("test", &config.Logging{Level: "debug"})
 	m.Run()
 }
 

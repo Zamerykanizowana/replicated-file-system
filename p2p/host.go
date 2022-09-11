@@ -79,7 +79,7 @@ type (
 // Run kicks of connection processes for the Host and begins listening for incoming messages.
 func (h *Host) Run(ctx context.Context) {
 	ctx, h.cancel = context.WithCancel(ctx)
-	log.Info().Object("host", h).Msg("initializing p2p network connection")
+	log.Info().Msg("initializing p2p network connection")
 	h.Conn.Run(ctx)
 	go h.listen(ctx)
 }
@@ -152,10 +152,7 @@ func (h *Host) Replicate(ctx context.Context, request *protobuf.Request) error {
 		case msg = <-trans.NotifyChan:
 			// Message was already set in transaction by listen(),
 			// no need to do anything more here than log it.
-			log.Info().
-				Object("host", h).
-				Object("msg", msg).
-				Msg("message received")
+			log.Info().Object("msg", msg).Msg("message received")
 			continue
 		}
 	}
@@ -191,12 +188,12 @@ func (h *Host) listen(ctx context.Context) {
 			return
 		case m := <-h.Conn.ReceiveC():
 			if m.Err != nil {
-				log.Err(err).Object("host", h).Msg("Error while collecting a message")
+				log.Err(m.Err).Msg("Error while collecting a message")
 				continue
 			}
 			msg, err = protobuf.ReadMessage(m.Data)
 			if err != nil {
-				log.Err(err).Object("host", h).Msg("Failed to unmarshal protobuf message")
+				log.Err(err).Msg("Failed to unmarshal protobuf message")
 				continue
 			}
 		}
@@ -245,10 +242,7 @@ func (h *Host) processResponses(trans *transaction) error {
 		h.conflicts.IncrementClock()
 	}
 	if rejected {
-		log.Debug().
-			Object("host", h).
-			Dict("errors_count", logDict).
-			Msg("transaction was rejected")
+		log.Debug().Dict("errors_count", logDict).Msg("transaction was rejected")
 		return ErrNotPermitted
 	}
 	return nil
@@ -291,10 +285,7 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *transaction) 
 		case msg = <-transaction.NotifyChan:
 		}
 
-		log.Info().
-			Object("host", h).
-			Object("msg", msg).
-			Msg("message received")
+		log.Info().Object("msg", msg).Msg("message received")
 
 		if request := msg.GetRequest(); request != nil {
 			response := h.Mirror.Consult(request)
@@ -305,15 +296,9 @@ func (h *Host) handleTransaction(ctx context.Context, transaction *transaction) 
 			}
 			ourResponse = response.Type
 			message := protobuf.NewResponseMessage(msg.Tid, h.Name, response)
-			log.Info().
-				Object("host", h).
-				Object("msg", message).
-				Msg("consulted response result")
+			log.Info().Object("msg", message).Msg("consulted response result")
 			if err := h.broadcast(ctx, message); err != nil {
-				log.Err(err).
-					Object("host", h).
-					Object("msg", message).
-					Msg("error occurred while broadcasting a response")
+				log.Err(err).Object("msg", message).Msg("error occurred while broadcasting a response")
 			}
 		}
 	}

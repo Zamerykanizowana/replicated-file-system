@@ -13,7 +13,7 @@ import (
 	"github.com/Zamerykanizowana/replicated-file-system/config"
 )
 
-func Configure(conf *config.Logging) {
+func Configure(name string, conf *config.Logging) {
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
 	zerolog.TimestampFieldName = "ts"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
@@ -24,6 +24,7 @@ func Configure(conf *config.Logging) {
 	logger := log.With().
 		Caller().
 		Stack().
+		Str("host", name).
 		Logger()
 	if term.IsTerminal(int(os.Stdout.Fd())) {
 		logger = logger.Output(zerolog.NewConsoleWriter())

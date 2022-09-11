@@ -102,7 +102,7 @@ func (p *Pool) Run(ctx context.Context) {
 	var err error
 	p.listener, err = quic.ListenAddr(p.host.Address, p.tlsConfig, p.quicConf)
 	if err != nil {
-		log.Fatal().Err(err).Object("host", p.host).Msg("failed to create QUIC listener")
+		log.Fatal().Err(err).Msg("failed to create QUIC listener")
 	}
 	go p.listen(ctx)
 	go p.dialAll(ctx)
@@ -112,9 +112,8 @@ func (p *Pool) Run(ctx context.Context) {
 // while blocking new connections until the the listener is closed and dial routines
 // for each of the peers were closed.
 func (p *Pool) Close() error {
-	log.Info().Object("host", p.host).Msg("Closing all network connections")
-	log.Debug().Object("host", p.host).
-		Msg("waiting for all active connection handlers to return")
+	log.Info().Msg("Closing all network connections")
+	log.Debug().Msg("waiting for all active connection handlers to return")
 	p.closed.Store(true)
 	if p.cancelFunc != nil {
 		p.cancelFunc()
@@ -130,7 +129,7 @@ func (p *Pool) Close() error {
 	if err := p.listener.Close(); err != nil {
 		mErr.Append("QUIC listener", errors.Wrap(err, "failed to close QUIC listener"))
 	}
-	log.Debug().Object("host", p.host).Msg("closing all connections")
+	log.Debug().Msg("closing all connections")
 	for _, conn := range p.pool {
 		if err := conn.Close(connErrClosed); err != nil {
 			mErr.Append(conn.peer.Name, err)
@@ -224,7 +223,7 @@ func (p *Pool) acceptConnections(ctx context.Context) {
 		}
 		if err != nil {
 			p.removeConnectionHandler()
-			log.Err(err).Object("host", p.host).Msg("failed to accept incoming connection")
+			log.Err(err).Msg("failed to accept incoming connection")
 			continue
 		}
 		go func() {
@@ -232,7 +231,7 @@ func (p *Pool) acceptConnections(ctx context.Context) {
 			ctx, cancel := contextWithOptionalTimeout(ctx, p.connectionEstablishingTimeout)
 			defer cancel()
 			if err = p.add(ctx, Server, conn); err != nil {
-				log.Debug().Err(err).Object("host", p.host).Send()
+				log.Debug().Err(err).Send()
 			}
 		}()
 	}
@@ -272,10 +271,7 @@ func (p *Pool) dial(ctx context.Context, c *Connection) {
 				return
 			}
 			backoff.Next()
-			log.Ctx(ctx).Debug().Err(err).
-				Object("host", p.host).
-				EmbedObject(backoff).
-				Msg("failed to dial connection")
+			log.Ctx(ctx).Debug().Err(err).EmbedObject(backoff).Msg("failed to dial connection")
 			continue
 		}
 		backoff.Reset()

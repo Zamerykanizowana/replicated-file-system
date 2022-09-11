@@ -227,6 +227,8 @@ func (c *Connection) Close(err error) error {
 		return nil
 	}
 
+	c.status = StatusDead
+
 	log.Err(err).EmbedObject(c).Msg("connection to the peer was lost")
 
 	// It should only be called when the remote connection was not closed yet, so it won't
@@ -236,7 +238,6 @@ func (c *Connection) Close(err error) error {
 		err = closeConn(c.conn, err)
 	}
 
-	c.status = StatusDead
 	c.perspective = Unknown
 	c.perspectiveResolver.Reset()
 	c.activeConnections.Add(-1)
@@ -244,8 +245,7 @@ func (c *Connection) Close(err error) error {
 }
 
 func (c *Connection) MarshalZerologObject(e *zerolog.Event) {
-	e.Object("host", c.host).
-		Object("peer", c.peer).
+	e.Object("peer", c.peer).
 		Stringer("status", c.status).
 		Stringer("perspective", c.perspective)
 }
@@ -281,6 +281,7 @@ func (c *Connection) handleErrors(err error) error {
 				return nil
 			case connErrClosed:
 				closed = true
+				break
 			}
 		}
 	}

@@ -107,7 +107,7 @@ func run(ctx context.Context, conf *config.Config) error {
 		log.Fatal().
 			Str("name", flagValues.Name).
 			Interface("peers_config", conf.Peers).
-			Msg("invalid peer name provided, peer must be listed in the peers config")
+			Msg("invalid host name provided, host must be listed in the peers config")
 	}
 	conn := connection.NewPool(host, peers, conf.Connection, tlsconf.Default(conf.Connection.TLS))
 
@@ -126,10 +126,6 @@ func run(ctx context.Context, conf *config.Config) error {
 
 func setup() (*config.Config, error) {
 	conf := mustReadConfig()
-	logging.Configure(conf.Logging)
-	log.Debug().Object("config", conf).Msg("loaded config")
-	protobuf.SetCompression(conf.Connection.Compression)
-
 	if len(flagValues.CAPath) > 0 {
 		conf.Connection.TLS.CAPath = flagValues.CAPath
 	}
@@ -139,10 +135,17 @@ func setup() (*config.Config, error) {
 	if len(flagValues.KeyPath) > 0 {
 		conf.Connection.TLS.KeyPath = flagValues.KeyPath
 	}
+	if len(flagValues.Name) > 0 {
+		conf.HostName = flagValues.Name
+	}
 
 	if err := conf.Validate(); err != nil {
 		return nil, err
 	}
+
+	logging.Configure(conf.HostName, conf.Logging)
+	log.Debug().Object("config", conf).Msg("loaded config")
+	protobuf.SetCompression(conf.Connection.Compression)
 
 	return conf, nil
 }
