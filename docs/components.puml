@@ -1,0 +1,35 @@
+@startuml
+'https://plantuml.com/component-diagram
+
+skin rose
+
+header RFS Components
+
+package connection {
+    component Pool
+    component Connection
+    Pool -> Connection : Manage
+    Connection --> [perspective resolver] : Use
+}
+
+package p2p {
+    component Host
+    database transactions
+    Host --> [transactions] : Use
+    Host -> [conflicts resolver] : Use
+}
+
+component Mirror
+
+package rfs {
+    component Server
+    Server -> [root] : Create
+    [root] --> [rootFile] : Create
+}
+
+root --> Mirror : Use
+rootFile --> Mirror : Use
+Host ---> Pool : Use
+Host --> Mirror : Use
+
+@enduml

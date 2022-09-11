@@ -1,0 +1,35 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+skin rose
+
+header Graceful shutdown
+
+actor user
+participant "Main process" as main
+participant "Fuse Server" as server
+participant "Host" as host
+participant "Connection Pool" as pool
+
+autonumber
+
+user -> main ++ : SIGINT/SIGTERM
+
+group Close connections
+    main -> host ++ : Close
+    host -> host : Wait for all transactions\nto finish and stop accepting new ones.
+    host -> pool ++ : Close
+    pool -> pool : Close all connections and wait\nfor all currently handled\nconnections to return.
+    pool -> host -- : Closed
+    host -> main -- : Closed
+end
+
+group Close FUSE server
+    main -> server ++ : Close
+    server -> server : Unmount
+    server -> main -- : Closed
+end
+
+main -> user --
+
+@enduml

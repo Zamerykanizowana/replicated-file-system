@@ -39,6 +39,7 @@ peers work on the same FS which is replicated on their local machines.
 | `p2p`       | Peer-2-Peer replication mechanisms.                                     |
 | `connetion` | The underlying network connection.                                      |
 | `test`      | End to end tests.                                                       |
+| `docs`      | Diagrams and other documentation lives there.                           |
 
 ## Running
 

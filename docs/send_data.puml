@@ -1,0 +1,32 @@
+@startuml
+'https://plantuml.com/use-case-diagram
+
+skin rose
+
+header P2P Connection - sending data
+
+left to right direction
+
+actor "Host" as host
+
+rectangle "Connections Pool" {
+  usecase pool
+  usecase "Peer" as p1
+  usecase "Peer" as p2
+  usecase "Peer" as p3
+}
+
+host --> pool : Broadcast
+pool --> p1 : Send
+pool --> p2 : Send
+pool --> p3 : Send
+
+note right of host
+We're not sending a standard broadcast packets
+rather we're sending the same message to all
+the peers, the effect however might be compared
+to a broadcast, thus the naming used in code
+for the method used to send the data.
+end note
+
+@enduml
