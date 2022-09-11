@@ -4,7 +4,7 @@ WORKDIR /src
 
 COPY go.mod go.sum /src/
 
-RUN apk add install git bash
+RUN apk add git bash
 
 RUN go mod download
 
