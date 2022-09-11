@@ -33,7 +33,8 @@ run: ## Run the binary under OUT as peer=PEER and config=CONFIGPATH.
 run/docker: cert/create ## Run docker image for peer=${PEER} mounting cert under ${CERT_PATH}:${DOCKER_CERT_PATH}.
 	docker run \
 		--rm -it \
-		--privileged --cap-add SYS_ADMIN \
+		--cap-add SYS_ADMIN \
+		--device /dev/fuse \
 		--name "${APP_NAME}-${PEER}" \
 		-v ${CERT_PATH}:${DOCKER_CERT_PATH} \
 		${DOCKER_IMAGE} \
