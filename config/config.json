@@ -1,6 +1,12 @@
 {
+  "host_name": "Aragorn",
   "connection": {
-    "tls_version": "1.3",
+    "tls": {
+      "version": "1.3",
+      "ca_path": "connection/cert/ca.crt",
+      "cert_path": "connection/cert/Aragorn.crt",
+      "key_path": "connection/cert/Aragorn.key"
+    },
     "message_buffer_size": 10000,
     "dial_backoff": {
       "initial": 100000000,
@@ -41,5 +47,6 @@
   },
   "logging": {
     "level": "info"
-  }
+  },
+  "replication_timeout": "300000000000"
 }

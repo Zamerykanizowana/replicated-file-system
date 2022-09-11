@@ -99,10 +99,10 @@ func (p *perspectiveResolver) resolve(
 ) (resolved bool, err error) {
 	ctr := p.counter.Add(1)
 
-	rcv := make(chan message)
+	rcv := make(chan Message)
 	go func() {
 		data, err := p.recv(ctx, conn, 0)
-		rcv <- message{data: data, err: err}
+		rcv <- Message{Data: data, Err: err}
 	}()
 
 	resolvent := perspectiveResolvent{Perspective: perspective, ctr: ctr}
@@ -111,10 +111,10 @@ func (p *perspectiveResolver) resolve(
 	}
 
 	msg := <-rcv
-	if err = msg.err; err != nil {
+	if err = msg.Err; err != nil {
 		return
 	}
-	if err = resolvent.Decode(msg.data); err != nil {
+	if err = resolvent.Decode(msg.Data); err != nil {
 		return
 	}
 	if resolvent.Perspective == perspective {

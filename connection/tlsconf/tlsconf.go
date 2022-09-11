@@ -5,6 +5,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/Zamerykanizowana/replicated-file-system/config"
 	"github.com/Zamerykanizowana/replicated-file-system/connection/cert"
 )
 
@@ -15,12 +16,12 @@ import (
 //     (we're doing the same thing to client as we do to the server)
 //   - InsecureSkipVerify has to be set to true, we don't really care
 //     what host are we connecting to, as long as the cert and peer name checks out.
-func Default(tlsVersion uint16) *tls.Config {
-	certificate, err := cert.Certificate()
+func Default(conf config.TLS) *tls.Config {
+	certificate, err := cert.Certificate(conf.CertPath, conf.KeyPath)
 	if err != nil {
 		log.Fatal().Err(err).Send()
 	}
-	caPool, err := cert.CAPool()
+	caPool, err := cert.CAPool(conf.CAPath)
 	if err != nil {
 		log.Fatal().Err(err).Send()
 	}
@@ -32,8 +33,8 @@ func Default(tlsVersion uint16) *tls.Config {
 		ClientAuth: tls.RequireAndVerifyClientCert,
 		// We don't want to verify the host, rather we're interested in peer name.
 		InsecureSkipVerify: true,
-		MinVersion:         tlsVersion,
-		MaxVersion:         tlsVersion,
+		MinVersion:         conf.GetTLSVersion(),
+		MaxVersion:         conf.GetTLSVersion(),
 		// This might be useful for Wireshark debugging/analysis.
 		KeyLogWriter: nil,
 	}

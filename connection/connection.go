@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
@@ -19,7 +20,8 @@ func NewConnection(
 	host *config.Peer,
 	peer *config.Peer,
 	timeout time.Duration,
-	sink chan<- message,
+	sink chan<- Message,
+	activeConnections *atomic.Int64,
 ) *Connection {
 	return &Connection{
 		host:                host,
@@ -32,6 +34,7 @@ func NewConnection(
 		openNotify:          make(chan struct{}),
 		netOpTimeout:        timeout,
 		sink:                sink,
+		activeConnections:   activeConnections,
 	}
 }
 
@@ -60,7 +63,10 @@ type (
 		// netOpTimeout is the timeout on all network operations, both send and recv.
 		netOpTimeout time.Duration
 		// sink is used to forward received messages further down the pipeline.
-		sink chan<- message
+		sink chan<- Message
+		// activeConnections should be incremented when Connection is StatusAlive and decremented
+		// when it goes to StatusDead.
+		activeConnections *atomic.Int64
 	}
 	// Status informs about the connection state, If the net.Conn is established and running
 	// it will hold StatusAlive, otherwise StatusDead.
@@ -132,6 +138,7 @@ func (c *Connection) Establish(
 	c.conn = conn
 	c.perspective = perspective
 	c.status = StatusAlive
+	c.activeConnections.Add(1)
 	go func() { c.openNotify <- struct{}{} }()
 
 	go c.watchConnection(conn)
@@ -152,7 +159,7 @@ func (c *Connection) watchConnection(conn quic.Connection) {
 
 // Listen runs receiver loop, waiting for new messages.
 // If the Connection.Status is StatusDead it will block until WaitForOpen returns.
-// The received data along with any errors is wrapped by message struct and sent
+// The received data along with any errors is wrapped by Message struct and sent
 // to the sink channel.
 func (c *Connection) Listen(ctx context.Context) {
 	for {
@@ -163,10 +170,10 @@ func (c *Connection) Listen(ctx context.Context) {
 		}
 		data, err := c.Recv(ctx)
 		if err != nil {
-			c.sink <- message{err: err}
+			c.sink <- Message{Err: err}
 			continue
 		}
-		c.sink <- message{data: data}
+		c.sink <- Message{Data: data}
 	}
 }
 
@@ -232,6 +239,7 @@ func (c *Connection) Close(err error) error {
 	c.status = StatusDead
 	c.perspective = Unknown
 	c.perspectiveResolver.Reset()
+	c.activeConnections.Add(-1)
 	return err
 }
 

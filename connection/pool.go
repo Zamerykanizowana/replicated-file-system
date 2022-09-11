@@ -16,17 +16,18 @@ import (
 
 func NewPool(
 	host *config.Peer,
-	peers []*config.Peer,
+	peers config.Peers,
 	connConf *config.Connection,
 	tlsConf *tls.Config,
 ) *Pool {
-	msgs := make(chan message, connConf.MessageBufferSize)
+	msgs := make(chan Message, connConf.MessageBufferSize)
 
+	activeConnections := new(atomic.Int64)
 	whitelist := make(map[peerName]struct{}, len(peers))
 	cs := make(map[peerName]*Connection, len(whitelist))
 	for _, peer := range peers {
 		whitelist[peer.Name] = struct{}{}
-		cs[peer.Name] = NewConnection(host, peer, connConf.SendRecvTimeout, msgs)
+		cs[peer.Name] = NewConnection(host, peer, connConf.SendRecvTimeout, msgs, activeConnections)
 	}
 
 	p := &Pool{
@@ -37,6 +38,7 @@ func NewPool(
 		msgs:                          msgs,
 		dialBackoffConfig:             &connConf.DialBackoff,
 		connectionEstablishingTimeout: connConf.HandshakeTimeout,
+		activeConnections:             activeConnections,
 	}
 
 	tlsConf.VerifyConnection = p.VerifyConnection
@@ -68,8 +70,8 @@ type (
 		dialFunc quicDial
 		// pool is the map storing each Connection. The key is peer's name.
 		pool map[peerName]*Connection
-		// msgs is a buffered channel onto which each Connection.Send publishes message.
-		msgs              chan message
+		// msgs is a buffered channel onto which each Connection.Send publishes Message.
+		msgs              chan Message
 		dialBackoffConfig *config.Backoff
 		// connectionEstablishingTimeout sets the timeout for both dialed and accepted connections handling.
 		connectionEstablishingTimeout time.Duration
@@ -80,11 +82,13 @@ type (
 		closed atomic.Bool
 		// cancelFunc should be called during shutdown to speed up the process of closing the Pool.
 		cancelFunc context.CancelFunc
+		// activeConnections tells us the number of active (StatusAlive) Connection.
+		activeConnections *atomic.Int64
 	}
-	// message allows passing errors along with data through channels.
-	message struct {
-		data []byte
-		err  error
+	// Message allows passing errors along with data through channels.
+	Message struct {
+		Data []byte
+		Err  error
 	}
 	// peerName is a type alias serving solely code readability.
 	peerName = string
@@ -138,7 +142,10 @@ func (p *Pool) Close() error {
 	return nil
 }
 
-var errPoolClosed = errors.New("pool is being shutdown")
+var (
+	ErrPeerIsDown = errors.New("one or more of the peers is down")
+	errPoolClosed = errors.New("pool is being shutdown")
+)
 
 // addConnectionHandler increments the active connection handlers count by 1.
 func (p *Pool) addConnectionHandler() error {
@@ -162,6 +169,9 @@ func (p *Pool) Broadcast(ctx context.Context, data []byte) error {
 		mErr = &MultiErr{}
 		wg   sync.WaitGroup
 	)
+	if p.activeConnections.Load() != int64(len(p.pool)) {
+		return ErrPeerIsDown
+	}
 	wg.Add(len(p.pool))
 	for _, c := range p.pool {
 		go func(conn *Connection) {
@@ -178,11 +188,16 @@ func (p *Pool) Broadcast(ctx context.Context, data []byte) error {
 	return nil
 }
 
-// Receive reads one message from the messages channel, it will block until
-// a message appears on the channel.
+// Receive reads one Message from the messages channel, it will block until
+// a Message appears on the channel.
 func (p *Pool) Receive() ([]byte, error) {
 	m := <-p.msgs
-	return m.data, m.err
+	return m.Data, m.Err
+}
+
+// ReceiveC exposes channel for reading incoming Message.
+func (p *Pool) ReceiveC() <-chan Message {
+	return p.msgs
 }
 
 // listen starts accepting connections and runs Connection.Listen for all the

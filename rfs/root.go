@@ -28,20 +28,13 @@ func (r *root) newRfsRoot(lr *fs.LoopbackRoot, _ *fs.Inode, _ string, _ *syscall
 		LoopbackNode: fs.LoopbackNode{RootData: lr}}
 }
 
-const PermissionDenied = syscall.EPERM
+const (
+	NoError          = 0
+	PermissionDenied = syscall.EPERM
+)
 
-func (r *root) Replicate(ctx context.Context, req *protobuf.Request) (success bool) {
-	if permitted := r.consultMirror(req); !permitted {
-		return false
-	}
-
-	if err := r.rep.Replicate(ctx, req); err != nil {
-		log.Err(err).
-			Object("request", req).
-			Msgf("failed to replicate %s request", req.Type)
-		return false
-	}
-	return true
+func (r *root) Replicate(ctx context.Context, req *protobuf.Request) syscall.Errno {
+	return replicate(ctx, req, r.rep, r.mirror)
 }
 
 func (r *root) Create(ctx context.Context, name string, flags uint32, mode uint32,
@@ -53,14 +46,14 @@ func (r *root) Create(ctx context.Context, name string, flags uint32, mode uint3
 		Str("path", p).
 		Msg("creating a file")
 
-	if !r.Replicate(ctx, &protobuf.Request{
+	if errno := r.Replicate(ctx, &protobuf.Request{
 		Type: protobuf.Request_CREATE,
 		Metadata: &protobuf.Request_Metadata{
 			RelativePath: r.relativePath(name),
 			Mode:         mode,
 		},
-	}) {
-		return nil, nil, 0, PermissionDenied
+	}); errno != NoError {
+		return nil, nil, 0, errno
 	}
 
 	flags = flags &^ syscall.O_APPEND
@@ -86,14 +79,14 @@ func (r *root) Create(ctx context.Context, name string, flags uint32, mode uint3
 func (r *root) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (
 	*fs.Inode, syscall.Errno,
 ) {
-	if !r.Replicate(ctx, &protobuf.Request{
+	if errno := r.Replicate(ctx, &protobuf.Request{
 		Type: protobuf.Request_MKDIR,
 		Metadata: &protobuf.Request_Metadata{
 			RelativePath: r.relativePath(name),
 			Mode:         mode,
 		},
-	}) {
-		return nil, PermissionDenied
+	}); errno != NoError {
+		return nil, errno
 	}
 
 	return r.LoopbackNode.Mkdir(ctx, name, mode, out)
@@ -114,7 +107,7 @@ func (r *root) Rename(
 	name string, newParent fs.InodeEmbedder,
 	newName string, flags uint32,
 ) syscall.Errno {
-	if !r.Replicate(ctx, &protobuf.Request{
+	if errno := r.Replicate(ctx, &protobuf.Request{
 		Type: protobuf.Request_RENAME,
 		Metadata: &protobuf.Request_Metadata{
 			RelativePath: r.relativePath(name),
@@ -122,21 +115,21 @@ func (r *root) Rename(
 				newParent.EmbeddedInode().Path(nil),
 				r.relativePath(newName)),
 		},
-	}) {
-		return PermissionDenied
+	}); errno != NoError {
+		return errno
 	}
 
 	return r.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
 }
 
 func (r *root) Rmdir(ctx context.Context, name string) syscall.Errno {
-	if !r.Replicate(ctx, &protobuf.Request{
+	if errno := r.Replicate(ctx, &protobuf.Request{
 		Type: protobuf.Request_RMDIR,
 		Metadata: &protobuf.Request_Metadata{
 			RelativePath: r.relativePath(name),
 		},
-	}) {
-		return PermissionDenied
+	}); errno != NoError {
+		return errno
 	}
 
 	return r.LoopbackNode.Rmdir(ctx, name)
@@ -150,14 +143,14 @@ func (r *root) Setattr(ctx context.Context, _ fs.FileHandle, in *fuse.SetAttrIn,
 		return fs.OK
 	}
 
-	if !r.Replicate(ctx, &protobuf.Request{
+	if errno := r.Replicate(ctx, &protobuf.Request{
 		Type: protobuf.Request_SETATTR,
 		Metadata: &protobuf.Request_Metadata{
 			RelativePath: r.Path(r.Root()),
 			Mode:         mode,
 		},
-	}) {
-		return PermissionDenied
+	}); errno != NoError {
+		return errno
 	}
 
 	// No name as we're operating on the existing node (can't go deeper).
@@ -171,14 +164,14 @@ func (r *root) Setattr(ctx context.Context, _ fs.FileHandle, in *fuse.SetAttrIn,
 }
 
 func (r *root) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	if !r.Replicate(ctx, &protobuf.Request{
+	if errno := r.Replicate(ctx, &protobuf.Request{
 		Type: protobuf.Request_SYMLINK,
 		Metadata: &protobuf.Request_Metadata{
 			RelativePath:    r.relativePath(target),
 			NewRelativePath: r.relativePath(name),
 		},
-	}) {
-		return nil, PermissionDenied
+	}); errno != NoError {
+		return nil, errno
 	}
 
 	return r.LoopbackNode.Symlink(ctx, target, name, out)
@@ -186,29 +179,32 @@ func (r *root) Symlink(ctx context.Context, target, name string, out *fuse.Entry
 
 // Link is for hard link, not for symlink.
 // It behaves just like Symlink and it literally calls it under the hood.
-func (r *root) Link(ctx context.Context, target fs.InodeEmbedder, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+func (r *root) Link(
+	ctx context.Context, target fs.InodeEmbedder,
+	name string, out *fuse.EntryOut,
+) (*fs.Inode, syscall.Errno) {
 	targetPath := target.EmbeddedInode().Path(nil)
-	if !r.Replicate(ctx, &protobuf.Request{
+	if errno := r.Replicate(ctx, &protobuf.Request{
 		Type: protobuf.Request_LINK,
 		Metadata: &protobuf.Request_Metadata{
 			RelativePath:    r.relativePath(targetPath),
 			NewRelativePath: r.relativePath(name),
 		},
-	}) {
-		return nil, PermissionDenied
+	}); errno != NoError {
+		return nil, errno
 	}
 
 	return r.LoopbackNode.Symlink(ctx, targetPath, name, out)
 }
 
 func (r *root) Unlink(ctx context.Context, name string) syscall.Errno {
-	if !r.Replicate(ctx, &protobuf.Request{
+	if errno := r.Replicate(ctx, &protobuf.Request{
 		Type: protobuf.Request_UNLINK,
 		Metadata: &protobuf.Request_Metadata{
 			RelativePath: r.relativePath(name),
 		},
-	}) {
-		return PermissionDenied
+	}); errno != NoError {
+		return errno
 	}
 
 	return r.LoopbackNode.Unlink(ctx, name)
@@ -222,7 +218,7 @@ func (r *root) CopyFileRange(
 	rfsInFile, _ := fhIn.(*rootFile)
 	rfsOutFile, _ := fhOut.(*rootFile)
 
-	if !r.Replicate(ctx, &protobuf.Request{
+	if errno := r.Replicate(ctx, &protobuf.Request{
 		Type: protobuf.Request_COPY_FILE_RANGE,
 		Metadata: &protobuf.Request_Metadata{
 			RelativePath:    rfsInFile.path,
@@ -231,8 +227,8 @@ func (r *root) CopyFileRange(
 			ReadOffset:      int64(offIn),
 			WriteLen:        int64(len),
 		},
-	}) {
-		return 0, PermissionDenied
+	}); errno != NoError {
+		return 0, errno
 	}
 
 	signedOffIn := int64(offIn)
@@ -253,13 +249,6 @@ func (r *root) physicalPath(name string) string {
 // from the underlying file system.
 func (r *root) relativePath(name string) string {
 	return filepath.Join(r.Path(r.Root()), name)
-}
-
-func (r *root) consultMirror(req *protobuf.Request) (permitted bool) {
-	if typ := r.mirror.Consult(req).GetType(); typ == protobuf.Response_ACK {
-		permitted = true
-	}
-	return
 }
 
 // idFromStat is a rip-off from go-fuse's loopback.go.
