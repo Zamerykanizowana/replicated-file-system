@@ -30,7 +30,7 @@ var (
 	flagValues = struct {
 		Name string
 		Path cli.Path
-		// TLS.
+		// TLS paths.
 		CAPath   cli.Path
 		CertPath cli.Path
 		KeyPath  cli.Path
@@ -77,15 +77,10 @@ func main() {
 			},
 		},
 		Action: func(context *cli.Context) error {
-			conf := mustReadConfig()
-			logging.Configure(conf.Logging)
-			log.Debug().Object("config", conf).Msg("loaded config")
-			protobuf.SetCompression(conf.Connection.Compression)
-
-			conf.Connection.TLS.CAPath = flagValues.CAPath
-			conf.Connection.TLS.CertPath = flagValues.CertPath
-			conf.Connection.TLS.KeyPath = flagValues.KeyPath
-
+			conf, err := setup()
+			if err != nil {
+				return err
+			}
 			return run(context.Context, conf)
 		},
 	}
@@ -127,6 +122,29 @@ func run(ctx context.Context, conf *config.Config) error {
 	// Unmount filesystem and close connections upon receiving signal.
 	sig.closeOnSignal(p2pHost, server)
 	return nil
+}
+
+func setup() (*config.Config, error) {
+	conf := mustReadConfig()
+	logging.Configure(conf.Logging)
+	log.Debug().Object("config", conf).Msg("loaded config")
+	protobuf.SetCompression(conf.Connection.Compression)
+
+	if len(flagValues.CAPath) > 0 {
+		conf.Connection.TLS.CAPath = flagValues.CAPath
+	}
+	if len(flagValues.CertPath) > 0 {
+		conf.Connection.TLS.CertPath = flagValues.CertPath
+	}
+	if len(flagValues.KeyPath) > 0 {
+		conf.Connection.TLS.KeyPath = flagValues.KeyPath
+	}
+
+	if err := conf.Validate(); err != nil {
+		return nil, err
+	}
+
+	return conf, nil
 }
 
 func newSignalHandler() *signalHandler {

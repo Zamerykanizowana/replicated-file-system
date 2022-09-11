@@ -88,6 +88,7 @@ func (h *Host) Run(ctx context.Context) {
 // awaits for all the active transactions to end.
 func (h *Host) Close() error {
 	closeErr := h.Conn.Close()
+	log.Info().Msg("Waiting for all active transactions to be closed")
 	for {
 		if len(h.transactions.ts) == 0 {
 			break

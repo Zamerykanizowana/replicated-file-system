@@ -42,6 +42,7 @@ func Read(path string) *Config {
 
 type (
 	Config struct {
+		HostName           string        `json:"host_name" validate:"required"`
 		Connection         *Connection   `json:"connection" validate:"required"`
 		Peers              Peers         `json:"peers" validate:"required,gt=0,unique=Name"`
 		Paths              *Paths        `json:"paths" validate:"required"`
@@ -96,13 +97,13 @@ type (
 
 	TLS struct {
 		// Version describes both max and mind TLS version in the tls.Config.
-		Version string `json:"tls_version" validate:"required,oneof=1.3 1.2 1.1 1.0"`
+		Version string `json:"version" validate:"required,oneof=1.3 1.2 1.1 1.0"`
 		// CAPath points to Certificate Authority file.
-		CAPath string `json:"-"`
+		CAPath string `json:"ca_path" validate:"required"`
 		// CertPath points to the public certificate of the peer.
-		CertPath string `json:"-"`
+		CertPath string `json:"cert_path" validate:"required"`
 		// KeyPath points to the private key of the peer.
-		KeyPath string `json:"-"`
+		KeyPath string `json:"key_path" validate:"required"`
 	}
 
 	Logging struct {
@@ -184,6 +185,13 @@ func (t TLS) GetTLSVersion() uint16 {
 
 var validate = validator.New()
 
+func (c Config) Validate() error {
+	if err := validate.Struct(c); err != nil {
+		return errors.Wrap(err, "validation failed for config")
+	}
+	return nil
+}
+
 func MustUnmarshalConfig(raw []byte) *Config {
 	var (
 		conf Config
@@ -199,9 +207,6 @@ func MustUnmarshalConfig(raw []byte) *Config {
 				Str("path", *path).
 				Msg("failed to expand home")
 		}
-	}
-	if err = validate.Struct(conf); err != nil {
-		log.Fatal().Err(err).Msg("validation failed for config")
 	}
 
 	return &conf

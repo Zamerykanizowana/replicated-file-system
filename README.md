@@ -70,12 +70,16 @@ COMMANDS:
    help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
+   --ca value                Path to Certificate Authority file.
    --config value, -c value  Load configuration from 'FILE' (default: By default embedded config.json is loaded)
+   --crt value               Path to the public certificate of the peer.
    --help, -h                show help (default: false)
+   --key value               Path to the private key of the peer.
    --name value, -n value    Provide peer name, It must be also present in the config, linked to an address
 ```
 
-Aside from `-c/--config` which provides  and `-n/--name` flags all configuration is done through a json config file.
+Aside from the flags provided with the `rfs`, all configuration is done through a json config file.
+You can also configure these flags values through the json config.
 You can view the schema with constraints and detailed information on what's what
 inside [config.go](./config/config.go).
 
@@ -83,8 +87,14 @@ Here's an example:
 
 ```json
 {
+  "host_name": "Aragorn",
   "connection": {
-    "tls_version": "1.3",
+    "tls": {
+      "version": "1.3",
+      "ca_path": "connection/cert/ca.crt",
+      "cert_path": "connection/cert/peer.crt",
+      "key_path": "connection/cert/peer.key"
+    },
     "message_buffer_size": 10000,
     "dial_backoff": {
       "initial": 100000000,
@@ -103,6 +113,18 @@ Here's an example:
       "name": "Aragorn"
     },
     {
+      "address": "localhost:9002",
+      "name": "Legolas"
+    },
+    {
+      "address": "localhost:9003",
+      "name": "Frodo"
+    },
+    {
+      "address": "localhost:9004",
+      "name": "Gandalf"
+    },
+    {
       "address": "localhost:9005",
       "name": "Gimli"
     }
@@ -114,7 +136,7 @@ Here's an example:
   "logging": {
     "level": "info"
   },
-  "replication_timeout":"300000000000"
+  "replication_timeout": "300000000000"
 }
 ```
 
@@ -137,4 +159,12 @@ At the moment we haven't yet figured out how to run `rfs` in Docker:
 
 ```text
 unable to mount fuse filesystem: exec: \"/bin/fusermount\": stat /bin/fusermount: no such file or directory
+```
+
+If you see `failed to sufficiently increase receive buffer size`, fret not as this is not critical, you can
+read more on the issue [here](https://github.com/lucas-clemente/quic-go/wiki/UDP-Receive-Buffer-Size).
+If you're on Linux and want to mitigate it, run:
+
+```shell
+sysctl -w net.core.rmem_max=2500000
 ```

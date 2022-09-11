@@ -19,6 +19,7 @@ DOCKER_IMAGE = "${APP_NAME}:${GIT_BRANCH}-${GIT_COMMIT}"
 CERT_AGE := -days 365
 CERT_KEY_SIZE = 4096
 CERT_PATH ?= connection/cert
+DOCKER_CERT_PATH ?= /hom/rfs/cert
 
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
@@ -32,12 +33,17 @@ run: ## Run the binary under OUT as peer=PEER and config=CONFIGPATH.
 run/docker/%: ## Run docker image with the name of the peer as the target variable.
 	docker run \
 		--rm -it \
+		--privileged --cap-add SYS_ADMIN \
 		--name "${APP_NAME}-$(*F)" \
-		-e "PEER_NAME=$(*F)" \
-		${DOCKER_IMAGE}
+		-v ${PWD}/${CERT_PATH}:${DOCKER_CERT_PATH} \
+		${DOCKER_IMAGE} \
+			--ca ${DOCKER_CERT_PATH}/ca.crt \
+			--crt ${DOCKER_CERT_PATH}/$(*F).crt \
+			--key ${DOCKER_CERT_PATH}/$(*F).key
+
 
 build: cert/create ## Build binary with embedded TLS certificate.
-	mkdir -p ${OUT_DIR}
+	@mkdir -p ${OUT_DIR}
 	go build -ldflags "${LDFLAGS}" -o ${OUT} main.go
 
 build/full: format verify test build ## Format, verify and test before building the binary.
@@ -66,31 +72,33 @@ cert/create: cert/generate-peer-key cert/generate-peer-csr cert/sign-csr ## Crea
 
 cert/generate-peer-key: ## Generate private key using RSA for peer under CERT_PATH with size=CERT_KEY_SIZE.
 	cd ${CERT_PATH} && \
-	openssl genrsa -out peer.key ${CERT_KEY_SIZE}
+	openssl genrsa -out ${PEER}.key ${CERT_KEY_SIZE}
 
 cert/generate-peer-csr: ## Generate certificate signing request under CERT_PATH with age=CERT_AGE.
 	cd ${CERT_PATH} && \
 	openssl req -new ${CERT_AGE} \
 		-subj "/C=PL/CN=${PEER}" \
-		-key peer.key \
-		-out peer.csr
+		-key ${PEER}.key \
+		-out ${PEER}.csr
 
 cert/sign-csr: ## Sign certificate request under CERT_PATH with age=CERT_AGE.
 	cd ${CERT_PATH} && \
 	openssl x509 -req ${CERT_AGE} -sha256 -CAcreateserial \
-		-in peer.csr \
+		-in ${PEER}.csr \
 		-CA ca.crt \
 		-CAkey ca.key \
-		-out peer.crt
+		-out ${PEER}.crt
 
 format: ## Format go files.
 	go fmt ./...
 
-test: ## Run unit tests.
+test: test/unit test/e2e ## Run unit all tests.
+
+test/unit: ## Run unit tests.
 	go test -v ./...
 
-test-e2e: ## Run end to end tests.
-	go test -tags e2e -v ./test
+test/e2e: ## Run end to end tests.
+	go test -v -tags e2e ./test
 
 verify: ## Verify files in project.
 	go vet ./...
