@@ -72,6 +72,7 @@ Targets:
         cert/generate-peer-key          Generate private key using RSA for peer under CERT_PATH with size=CERT_KEY_SIZE.
         cert/sign-csr                   Sign certificate request under CERT_PATH with age=CERT_AGE.
         clean                           Remove all certificates and built binaries.
+        docs                            Generate PNG diagrams from Plantuml files.
         format                          Format go files.
         help                            Print this help message.
         install/dev-dependencies        Install development dependencies: protoc and protoc-gen-go.
