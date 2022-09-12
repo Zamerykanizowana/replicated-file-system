@@ -182,12 +182,6 @@ The system is not 100% fail proof, the greatest danger happens when the `rfs` pr
 into a dirty state if the peer has not mirrored (or finished via loopback FS) the transaction yet.
 It will be missing one or more FS changes and it will require manual fixing with `rfs` unplugged.
 
-At the moment we haven't yet figured out how to run `rfs` in Docker:
-
-```text
-unable to mount fuse filesystem: exec: \"/bin/fusermount\": stat /bin/fusermount: no such file or directory
-```
-
 If you see `failed to sufficiently increase receive buffer size`, fret not as this is not critical, you can
 read more on the issue [here](https://github.com/lucas-clemente/quic-go/wiki/UDP-Receive-Buffer-Size).
 If you're on Linux and want to mitigate it, run:
