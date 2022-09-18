@@ -17,6 +17,7 @@ message Message {
   }
 }
 
+// Request provides an almost 1:1 mapping to a syscall-backed file-system operation.
 message Request {
   Type type = 1;
   Metadata metadata = 2;
