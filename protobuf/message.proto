@@ -3,12 +3,16 @@ package message;
 
 option go_package = "github.com/Zamerykanizowana/replicated-file-system/protobuf";
 
+// Message is a container for either a request or a response from the peer `peer_name` and is related to the transaction denoted by `tid`.
 message Message {
-  // tid is transaction id.
+  // The transaction ID denoted by a Version 4 UUID string.
   string tid = 1;
+  // A textual name of the peer name, e.g. Aragorn.
   string peer_name = 2;
   oneof type {
+    // A request for the pending file-system operation.
     Request request = 3;
+    // A response containing an **ACK** or **NACK**.
     Response response = 4;
   }
 }
