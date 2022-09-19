@@ -19,7 +19,7 @@ message Message {
 
 // Request provides an almost 1:1 mapping to a syscall-backed file-system operation.
 message Request {
-  // An operation on a file mapping to a syscall, e.g. create, remove, write, etc.
+  // An operation on a file, e.g. create, remove, write, etc.
   Type type = 1;
   // System call parameters, e.g. path, mode, offset.
   Metadata metadata = 2;
@@ -42,11 +42,11 @@ message Request {
     COPY_FILE_RANGE = 9;
   }
 
-  // System call parameters. Depending on the `Type`, Not all fields must be initialized.
+  // System call parameters. Depending on the `Type`, not all fields may be initialized.
   message Metadata {
-    // Used in system calls operating on a single name (i.e. `CREATE`, `MKDIR`, `RMDIR`, `SETATTR`, `UNLINK` and `WRITE`).
+    // Used in `CREATE`, `MKDIR`, `RMDIR`, `SETATTR`, `UNLINK` and `WRITE`.
     string relative_path = 1;
-    // Used as a secondary path in `LINK`, `RENAME`, `SYMLINK`, `COPY_FILE_RANGE`.
+    // Used in `LINK`, `RENAME`, `SYMLINK` and `COPY_FILE_RANGE`.
     string new_relative_path = 2;
     uint32 mode = 3;
     int64 write_offset = 4;
