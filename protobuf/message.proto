@@ -12,7 +12,7 @@ message Message {
   oneof type {
     // A request for the pending file-system operation.
     Request request = 3;
-    // A response containing an **ACK** or **NACK**.
+    // A response containing an `ACK` or `NACK`.
     Response response = 4;
   }
 }
@@ -30,14 +30,23 @@ message Request {
 
   // An operation on a file mapping to a syscall.
   enum Type {
+    // `int creat(const char *pathname, mode_t mode);`
     CREATE = 0;
+    // `int link(const char *oldpath, const char *newpath);`
     LINK = 1;
+    // `int mkdir(const char *pathname, mode_t mode);`
     MKDIR = 2;
+    // `int rename(const char *oldpath, const char *newpath);`
     RENAME = 3;
+    // `int rmdir(const char *pathname);`
     RMDIR = 4;
+    // `int chmod(const char *path, mode_t mode);`
     SETATTR = 5;
+    // `int symlink(const char *oldpath, const char *newpath);`
     SYMLINK = 6;
+    // `int unlink(const char *pathname);`
     UNLINK = 7;
+    // `ssize_t write(int fd, const void *buf, size_t count);`
     WRITE = 8;
     COPY_FILE_RANGE = 9;
   }
@@ -58,22 +67,34 @@ message Request {
 
 // Response is a message that each participating node sends upon receiving a new incoming transaction. 
 message Response {
+  // An `ACK` or `NACK`.
   Type type = 1;
+  // Indicates the reason for `NACK`.
   optional Error error = 2;
+  // Textual description of the error.
   optional string error_msg = 3;
 
   enum Type {
+    // Proceed forward on the originator and propagate to replicators.
     ACK = 0;
+    // Fail on the originator and remote the transaction from replicators.
     NACK = 1;
   }
 
   enum Error {
+    // Indicates unhandled error (usually a bug).
     ERR_UNKNOWN = 0;
+    // The file path already exists on the replicator.
     ERR_ALREADY_EXISTS = 1;
+    // Expected path (e.g. `const char *oldpath`) was not found.
     ERR_DOES_NOT_EXIST = 2;
+    // A transaction for any specified path is already pending.
     ERR_TRANSACTION_CONFLICT = 3;
+    // Expected a directory but got something else.
     ERR_NOT_A_DIRECTORY = 4;
+    // Expected a file but got something else.
     ERR_NOT_A_FILE = 5;
+    // Not a valid `mode_t` value provided.
     ERR_INVALID_MODE = 6;
   }
 }
