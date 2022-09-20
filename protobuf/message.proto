@@ -88,7 +88,7 @@ message Response {
     ERR_ALREADY_EXISTS = 1;
     // Expected path (e.g. `const char *oldpath`) was not found.
     ERR_DOES_NOT_EXIST = 2;
-    // A transaction for any specified path is already pending.
+    // A transaction for the specified path(s) is already pending.
     ERR_TRANSACTION_CONFLICT = 3;
     // Expected a directory but got something else.
     ERR_NOT_A_DIRECTORY = 4;
