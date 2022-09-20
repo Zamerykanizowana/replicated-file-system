@@ -60,7 +60,7 @@ message Request {
     uint32 mode = 3;
     int64 write_offset = 4;
     int64 read_offset = 5;
-    // Denotes the number of bytes for `WRITE`.
+    // Denotes the number of bytes for `WRITE` and `COPY_FILE_RANGE`.
     int64 write_len = 6;
   }
 }
