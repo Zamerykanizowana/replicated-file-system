@@ -69,7 +69,7 @@ message Request {
 message Response {
   // An `ACK` or `NACK`.
   Type type = 1;
-  // Indicates the reason for `NACK`.
+  // An error code indicating the reason for `NACK`.
   optional Error error = 2;
   // Textual description of the error.
   optional string error_msg = 3;
