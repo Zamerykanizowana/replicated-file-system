@@ -3,62 +3,98 @@ package message;
 
 option go_package = "github.com/Zamerykanizowana/replicated-file-system/protobuf";
 
+// Message is a container for either a request or a response from the peer `peer_name` and is related to the transaction denoted by `tid`.
 message Message {
-  // tid is transaction id.
+  // The transaction ID denoted by a Version 4 UUID string.
   string tid = 1;
+  // A textual name of the peer name, e.g. Aragorn.
   string peer_name = 2;
   oneof type {
+    // A request for the pending file-system operation.
     Request request = 3;
+    // A response containing an `ACK` or `NACK`.
     Response response = 4;
   }
 }
 
+// Request provides an almost 1:1 mapping to a syscall-backed file-system operation.
 message Request {
+  // An operation on a file, e.g. create, remove, write, etc.
   Type type = 1;
+  // System call parameters, e.g. path, mode, offset.
   Metadata metadata = 2;
+  // A logical timestamp used for resolving conflicts.
   uint64 clock = 3;
+  // This field is only used for `CREATE` and `WRITE` operations.
   optional bytes content = 4;
 
+  // An operation on a file mapping to a syscall.
   enum Type {
+    // `int creat(const char *pathname, mode_t mode);`
     CREATE = 0;
+    // `int link(const char *oldpath, const char *newpath);`
     LINK = 1;
+    // `int mkdir(const char *pathname, mode_t mode);`
     MKDIR = 2;
+    // `int rename(const char *oldpath, const char *newpath);`
     RENAME = 3;
+    // `int rmdir(const char *pathname);`
     RMDIR = 4;
+    // `int chmod(const char *path, mode_t mode);`
     SETATTR = 5;
+    // `int symlink(const char *oldpath, const char *newpath);`
     SYMLINK = 6;
+    // `int unlink(const char *pathname);`
     UNLINK = 7;
+    // `ssize_t write(int fd, const void *buf, size_t count);`
     WRITE = 8;
     COPY_FILE_RANGE = 9;
   }
 
+  // System call parameters. Depending on the `Type`, not all fields may be initialized.
   message Metadata {
+    // Used in `CREATE`, `MKDIR`, `RMDIR`, `SETATTR`, `UNLINK` and `WRITE`.
     string relative_path = 1;
+    // Used in `LINK`, `RENAME`, `SYMLINK` and `COPY_FILE_RANGE`.
     string new_relative_path = 2;
     uint32 mode = 3;
     int64 write_offset = 4;
     int64 read_offset = 5;
+    // Denotes the number of bytes for `WRITE` and `COPY_FILE_RANGE`.
     int64 write_len = 6;
   }
 }
 
+// Response is a message that each participating node sends upon receiving a new incoming transaction. 
 message Response {
+  // An `ACK` or `NACK`.
   Type type = 1;
+  // An error code indicating the reason for `NACK`.
   optional Error error = 2;
+  // Textual description of the error.
   optional string error_msg = 3;
 
   enum Type {
+    // Proceed forward on the originator and propagate to replicators.
     ACK = 0;
+    // Fail on the originator and remote the transaction from replicators.
     NACK = 1;
   }
 
   enum Error {
+    // Indicates unhandled error.
     ERR_UNKNOWN = 0;
+    // The file path already exists on the replicator.
     ERR_ALREADY_EXISTS = 1;
+    // Expected path (e.g. `const char *oldpath`) was not found.
     ERR_DOES_NOT_EXIST = 2;
+    // A transaction for the specified path(s) is already pending.
     ERR_TRANSACTION_CONFLICT = 3;
+    // Expected a directory but got something else.
     ERR_NOT_A_DIRECTORY = 4;
+    // Expected a file but got something else.
     ERR_NOT_A_FILE = 5;
+    // Not a valid `mode_t` value provided.
     ERR_INVALID_MODE = 6;
   }
 }
