@@ -82,7 +82,7 @@ message Response {
   }
 
   enum Error {
-    // Indicates unhandled error (usually a bug).
+    // Indicates unhandled error.
     ERR_UNKNOWN = 0;
     // The file path already exists on the replicator.
     ERR_ALREADY_EXISTS = 1;
