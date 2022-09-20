@@ -22,7 +22,7 @@ pool --> p2 : Send
 pool --> p3 : Send
 
 note right of host
-We're not sending a standard broadcast packets
+We're not sending standard broadcast packets
 rather we're sending the same message to all
 the peers, the effect however might be compared
 to a broadcast, thus the naming used in code
