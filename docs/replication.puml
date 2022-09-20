@@ -1,0 +1,76 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+skin rose
+skinparam maxmessagesize 180
+
+header Replication - mkdir example
+
+actor User as user
+boundary "Fuse Server" as fuse
+control "Root File" as rootFile
+entity "Mirror" as mirror
+control "P2P Process" as p2p
+database "Transactions" as trans
+entity "Conflicts Resolver" as conflicts
+control "Connection Pool" as pool
+entity Connection as conn
+entity "Peer" as peer
+
+autonumber
+
+user -> fuse ++ : mkdir
+fuse -> rootFile ++ : Call mkdir hook
+rootFile -> mirror ++ : Consult, verify If we can actually make the directory
+alt #Pink If we can't
+    mirror -> rootFile -- : Disallow: //protobuf.NACK//
+    rootFile -> fuse : Return errno from mirror
+else #LightGreen If we can
+    mirror -> rootFile : Allow: //protobuf.ACK//
+end
+rootFile -> rootFile : Prepare //protobuf.Request//
+rootFile -> p2p ++ : Replicate mkdir operation and send //protobuf.Request//
+p2p -> p2p : Prepare //protobuf.Message//
+p2p -> trans : Create new transaction for the message
+p2p -> conflicts ++ : Detect and resolve potential transcation conflicts
+conflicts -> trans : Search for conflicting transactions
+conflicts -> conflicts : Resolve conflicts
+alt #Pink Conflict detected and resolved in favor of another transcation
+conflicts -> p2p : Return error
+p2p -> trans : Delete transaction
+p2p -> rootFile : Return //ErrConflict//
+else #LightGreen No conflicts or conflict was resolved in our favor
+conflicts -> p2p -- : Return
+end
+p2p -> p2p : Marshal //protobuf.Message// into bytes
+p2p -> pool ++ : Broadcast data
+loop For each peer
+    group async
+        pool -> conn ++ : Send data
+        conn -> conn : Start new QUIC sending stream
+        conn -> peer : Send data over QUIC stream
+        conn -> pool -- : Return any errors
+    end
+end
+pool -> pool : Wait for all sending processes to finish
+pool -> p2p -- : Return any errors associated with a specific peer's connection
+loop Wait for all the peers to respond, minus the peers which had sending errors
+peer -> conn ++ : Send //protobuf.Response//
+conn -> pool -- : Send received data over Golang channel //(async)//
+activate pool
+p2p <-> pool : Receive data (blocking)
+p2p -> p2p : Decode //protobuf.Message//
+p2p -> trans : Add to associated transcation
+deactivate pool
+end
+p2p -> p2p : Process all responses for the transaction
+p2p -> trans : Delete transaction
+alt #Pink Any response was //protobuf.NACK//
+p2p -> rootFile : Return //ErrNotPermitted//
+else #LightGreen All responses were //protobuf.ACK//
+p2p -> rootFile -- : Return no error
+end
+rootFile -> fuse -- : Return errno (0 if no error)
+fuse -> user -- : Directory created
+
+@enduml

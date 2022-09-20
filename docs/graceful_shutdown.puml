@@ -6,10 +6,10 @@ skin rose
 header Graceful shutdown
 
 actor user
-participant "Main process" as main
-participant "Fuse Server" as server
-participant "Host" as host
-participant "Connection Pool" as pool
+control "Main process" as main
+entity "Fuse Server" as server
+entity "Host" as host
+entity "Connection Pool" as pool
 
 autonumber
 
@@ -30,6 +30,6 @@ group Close FUSE server
     server -> main -- : Closed
 end
 
-main -> user --
+main -> user -- : Return control
 
 @enduml
