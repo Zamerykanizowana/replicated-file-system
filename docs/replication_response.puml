@@ -1,0 +1,62 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+skin rose
+skinparam maxmessagesize 180
+
+header Replication - mkdir example (response)
+
+actor "Peer" as peer
+boundary Connection as conn
+control "Connection Pool" as pool
+control "Listening process" as listener
+database "Transactions" as trans
+control "Transaction handler" as handler
+entity "Conflicts Resolver" as conflicts
+entity "Mirror" as mirror
+
+autonumber
+
+listener -> pool ++ : Receive message,\nblock until one arrives
+activate listener
+conn -> conn ++ : Open QUIC receiving stream
+peer -> conn : Send replication request
+conn --> pool -- : Read and forward data
+pool -> listener -- : Return raw bytes
+listener -> listener : Decode protobuf Message
+alt New transaction detected
+  listener -> trans : Create transaction
+  listener --> handler ++ : Spawn transaction handler process
+else Transaction already exists
+  listener -> trans : Update transaction
+end
+listener --> handler -- : Notify transcation handler process (new message has arrived)
+alt Message is a Request
+  handler -> mirror : Consult, verify If we can perform the operation
+  alt #Pink If we can't
+    handler -> pool ++ : Broadcast NACK 
+  end
+  handler -> conflicts ++ : Detect and resolve potential transcation conflicts
+  conflicts -> trans : Search for conflicting transactions
+  conflicts -> handler -- : Resolve conflicts
+  alt #Pink Conflict detected and resolved in favor of another transcation
+    handler -> pool : Broadcast NACK 
+  end
+  handler -> pool : Broadcast ACK
+else Message is a Response
+  note right of trans 
+    Do nothing, listening process
+    has already saved the message.
+  end note
+end
+
+loop For each peer
+  pool -> conn -- : Send response data
+  conn -> peer : Send raw data
+end
+
+alt All responses, including ours were ACK
+  handler -> mirror -- : Replicate (mirror) the operation
+end
+
+@enduml
