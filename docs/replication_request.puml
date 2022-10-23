@@ -4,7 +4,7 @@
 skin rose
 skinparam maxmessagesize 180
 
-header Replication - mkdir example
+header Replication - mkdir example (request)
 
 actor User as user
 boundary "Fuse Server" as fuse
@@ -15,7 +15,7 @@ database "Transactions" as trans
 entity "Conflicts Resolver" as conflicts
 control "Connection Pool" as pool
 entity Connection as conn
-entity "Peer" as peer
+actor "Peer" as peer
 
 autonumber
 
@@ -42,7 +42,7 @@ p2p -> rootFile : Return //ErrConflict//
 else #LightGreen No conflicts or conflict was resolved in our favor
 conflicts -> p2p -- : Return
 end
-p2p -> p2p : Marshal //protobuf.Message// into bytes
+p2p -> p2p : Serialize //protobuf.Message// into bytes
 p2p -> pool ++ : Broadcast data
 loop For each peer
     group async
