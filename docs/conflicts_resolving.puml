@@ -1,0 +1,33 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+skin rose
+
+header P2P Replication - conflicts resolving
+
+control "P2P Process" as p2p
+entity "Conflicts Resolver" as conflicts
+database "Transactions" as trans
+
+autonumber
+
+p2p -> conflicts : Detect and resolve conflicts\nfor protobuf //Request//
+conflicts -> trans : Get all transactions
+loop For each transaction
+    alt If //RelativePath// and //NewRelativePath// are the same
+        conflicts -> conflicts : Proceed to resolve conflict
+        alt If the //Request// clock is smaller then the compared transaction
+            conflicts -> p2p : Return //ErrTransactionConflict//
+        else If //Request// clocks are equal and the //Request// peer name is\nsmaller than the compared transaction's peer name
+            conflicts -> p2p : Return //ErrTransactionConflict//
+        else Else
+            conflicts -> p2p : Return no error
+        end
+    end
+end
+
+alt If //ErrTransactionConflict// was returned
+    p2p -> conflicts : Increment conflicts clock
+end
+
+@enduml

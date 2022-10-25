@@ -15,11 +15,11 @@ group Accept connection
     Host --> Peer: Send perspective resolvent
     Peer --> Host: Send perspective resolvent
     alt Perspective was resolved
-        Host -> Host: Assign QUIC connection to the\nConnection struct associated with the Peer
+        Host -> Host: Assign QUIC connection to the\n//Connection// associated with the Peer
     else Perspective was not resolved
-        Host -> Peer: Close QUIC connection\nconnErrNotResolved
+        Host -> Peer: Close QUIC connection with\n//connErrNotResolved//
     else the connection was already established
-        Host -> Peer: Close QUIC connection\nconnErrAlreadyEstablished
+        Host -> Peer: Close QUIC connection with\n//connErrAlreadyEstablished//
     end
 end
 
