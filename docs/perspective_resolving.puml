@@ -34,7 +34,7 @@ else the connection was already established
 end
 
 alt Error returned from Connection
-    pool -> Peer -- : Close QUIC connection with the returned error
+    pool -> Peer -- : Close QUIC connection\nwith the returned error
     deactivate Peer
 end
 
