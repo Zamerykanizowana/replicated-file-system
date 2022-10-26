@@ -56,9 +56,9 @@ type (
 //     client/server connections.
 //
 // The resolvent carries a single byte which holds on positions
-// 3,4 Perspective and 1,2 counter. Here are some examples:
-//   - 00001001 --> { Perspective: Client, Counter: 1 }
-//   - 00000110 --> { Perspective: Server, Counter: 2 }
+// 7,8 Perspective and 1-6 counter. Here are some examples:
+//   - 01000001 --> { Perspective: Client, Counter: 1 }
+//   - 10000010 --> { Perspective: Server, Counter: 2 }
 //
 // IF
 //
@@ -150,7 +150,7 @@ type perspectiveResolvent struct {
 	ctr uint32 // 1 or 2
 }
 
-// Encode places the Perspective at the 4 last bits and counter at the 4 first bit positions.
+// Encode places the Perspective at the 2 last bits and counter at the 6 first bit positions.
 func (p *perspectiveResolvent) Encode() (b []byte) {
 	// It's dodgy that we assume 4 bits will suffice here.
 	// In theory this counter can grow forever If we keep losing the connection with the peer
@@ -158,15 +158,16 @@ func (p *perspectiveResolvent) Encode() (b []byte) {
 	return []byte{byte(uint32(p.Perspective)<<6 | p.ctr)}
 }
 
-// Decode decodes the resolvent reading Perspective and counter from the first 4 bits.
+// Decode decodes the resolvent reading Perspective and counter from the single
+// byte.
 func (p *perspectiveResolvent) Decode(b []byte) error {
 	if len(b) != 1 {
 		return errors.Errorf("invalid perspectiveResolvent received,"+
 			" expected exactly 1 byte, got %d with %v content", len(b), b)
 	}
-	// Right bit shift to get the last 4 bits.
+	// Right bit shift to get the last 2 bits.
 	p.Perspective = Perspective(b[0] >> 6)
-	// Apply 00111111 bitmask to get the first 4 bits.
+	// Apply 00111111 bitmask to get the first 6 bits.
 	p.ctr = uint32(b[0] & 63)
 	return nil
 }
