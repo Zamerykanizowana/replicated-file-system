@@ -5,22 +5,37 @@ skin rose
 
 header P2P Connection - perspective resolving
 
-participant "Peer (client)" as Peer
-participant "Host (server)" as Host
+actor "Peer (client)" as Peer
+boundary "Connection Pool" as pool
+control Connection as conn
+entity "Perspective resolver" as resolver
 
 autonumber
 
-Peer -> Host ++ : Dial
-group Accept connection
-    Host --> Peer: Send perspective resolvent
-    Peer --> Host: Send perspective resolvent
-    alt Perspective was resolved
-        Host -> Host: Assign QUIC connection to the\n//Connection// associated with the Peer
-    else Perspective was not resolved
-        Host -> Peer: Close QUIC connection with\n//connErrNotResolved//
-    else the connection was already established
-        Host -> Peer: Close QUIC connection with\n//connErrAlreadyEstablished//
-    end
+Peer -> pool ++ : Dial
+activate Peer
+pool -> conn ++ : Add connection
+conn -> resolver ++ : Resolve perspective
+resolver --> Peer: Send perspective resolvent
+Peer --> resolver : Send perspective resolvent
+
+alt Counters are equal and fallback did not apply
+    resolver -> conn : Return //connErrNotResolved//
+else Counters are different or fallback applied
+    resolver -> conn -- : Return no error\nperspective was resolved
+end
+
+alt Perspective was resolved
+    conn -> conn : Assign QUIC connection to the\n//Connection// associated with the Peer
+else Perspective was not resolved
+    conn -> pool : Return //connErrNotResolved//
+else the connection was already established
+    conn -> pool -- : Return //connErrAlreadyEstablished//
+end
+
+alt Error returned from Connection
+    pool -> Peer -- : Close QUIC connection with the returned error
+    deactivate Peer
 end
 
 @enduml
