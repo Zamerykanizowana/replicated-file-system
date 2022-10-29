@@ -1,0 +1,30 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+skin rose
+
+header TLS handshake
+
+actor Peer
+boundary QUIC
+control VerifyConnection
+database Whitelist
+
+autonumber
+
+Peer -> QUIC : TLS handshake
+QUIC -> QUIC : Standard TLS\nverification procedure
+alt Verification fails
+  QUIC -> Peer : Reject
+else Verification succeeds
+  QUIC -> VerifyConnection : Callback
+  VerifyConnection -> Whitelist : Check If //CN// is any of the\npredefined peer's names
+  alt If //CN// didn't match any peer's name
+    VerifyConnection -> QUIC : Reject
+  else If //CN// matched any peer's name
+    VerifyConnection -> QUIC : Approve
+  end
+  QUCI -> Peer : Reject or approve based on\n//VerifyConnection// verdict
+end
+
+@enduml

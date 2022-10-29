@@ -313,20 +313,18 @@ func (p *Pool) add(ctx context.Context, perspective Perspective, quicConn quic.C
 	return nil
 }
 
-// VerifyConnection checks peer certificates, it expects a single cert
-// containing in the subject CN of the whitelisted peer.
+// VerifyConnection checks peer certificates, it expects a single certificate
+// containing in the subject, CN of the whitelisted peer.
 func (p *Pool) VerifyConnection(state tls.ConnectionState) error {
 	if len(state.PeerCertificates) != 1 {
 		return errors.Errorf("expected exactly one peer certificate, got %d",
 			len(state.PeerCertificates))
 	}
-	var peer string
-	for _, crt := range state.PeerCertificates {
-		peer = crt.Subject.CommonName
-		if _, ok := p.whitelist[peer]; !ok {
-			return errors.Errorf(
-				"SN: %s is not authorized to participate in the peer network", peer)
-		}
+	crt := state.PeerCertificates[0]
+	peerName := crt.Subject.CommonName
+	if _, isWhitelisted := p.whitelist[peerName]; !isWhitelisted {
+		return errors.Errorf(
+			"CN: %s, is not authorized to participate in the peer network", peerName)
 	}
 	return nil
 }

@@ -1,0 +1,23 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+skin rose
+
+header Mutual Transport Layer Security
+
+participant Server
+participant Client
+
+autonumber
+
+Client -> Server ++ : Connect to server
+activate Client
+Server -> Client : Present TLS certificate
+Client -> Client : Verify server's certificate
+Client -> Server : Present TLS certificate
+Server -> Server : Verify client's certificate
+Server -> Server : Grant access
+Client <--> Server -- : Exchange information over encrypted TLS connection
+deactivate Server
+
+@enduml
