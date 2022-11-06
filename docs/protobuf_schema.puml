@@ -1,0 +1,40 @@
+@startuml
+'https://plantuml.com/class-diagram
+
+skin rose
+
+header Protobuf schema
+
+protocol Message {
+    +**tid** : //string//
+    +**peer_name** : //string//
+    +**type** : //oneof{Request, Response}//
+}
+
+struct Request {
+    +**type** : //enum Type//
+    +**metadata** : //Metadata//
+    +**clock** : //uint64//
+    +**content** : //bytes//
+}
+
+struct Metadata {
+    +**relative_path** : //string//
+    +**new_relative_path** : //string//
+    +**mode** : //uint32//
+    +**write_offset** : //int64//
+    +**read_offset** : //int64//
+    +**write_len** : //int64//
+}
+
+struct Response {
+    +**type** : //oneof{ACK, NACK}//
+    +**error** : //enum Error//
+    +**error_msg** : //string//
+}
+
+Message *-- Request
+Message *-- Response
+Request *-- Metadata
+
+@enduml
