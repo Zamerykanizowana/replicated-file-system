@@ -1,11 +1,8 @@
 package protobuf
 
 import (
-	"bytes"
 	"compress/gzip"
-	"io"
 
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
 
