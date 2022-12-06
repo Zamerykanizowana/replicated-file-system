@@ -31,31 +31,32 @@ func SetCompression(cmp string) {
 }
 
 func compress(data []byte) ([]byte, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, len(data)*80/100))
-	w, err := gzip.NewWriterLevel(buf, compressionLevel)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create zlib.Writer")
-	}
-	if _, err = w.Write(data); err != nil {
-		return nil, errors.Wrap(err, "failed to write gzipped content to buffer")
-	}
-	if err = w.Close(); err != nil {
-		return nil, errors.Wrap(err, "failed to close gzip.Writer")
-	}
-	return buf.Bytes(), err
+	// buf := bytes.NewBuffer(make([]byte, 0, len(data)*80/100))
+	// w, err := gzip.NewWriterLevel(buf, compressionLevel)
+	// if err != nil {
+	// 	return nil, errors.Wrap(err, "failed to create zlib.Writer")
+	// }
+	// if _, err = w.Write(data); err != nil {
+	// 	return nil, errors.Wrap(err, "failed to write gzipped content to buffer")
+	// }
+	// if err = w.Close(); err != nil {
+	// 	return nil, errors.Wrap(err, "failed to close gzip.Writer")
+	// }
+	// return buf.Bytes(), err
+  return data, nil
 }
 
 func decompress(data []byte) ([]byte, error) {
-	r, err := gzip.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create gzip.Reader for provided data")
-	}
-	data, err = io.ReadAll(r)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read data through gzip.Reader")
-	}
-	if err = r.Close(); err != nil {
-		return nil, errors.Wrap(err, "failed to close gzip.Reader, can't finalize the decompression")
-	}
+	// r, err := gzip.NewReader(bytes.NewReader(data))
+	// if err != nil {
+	// 	return nil, errors.Wrap(err, "failed to create gzip.Reader for provided data")
+	// }
+	// data, err = io.ReadAll(r)
+	// if err != nil {
+	// 	return nil, errors.Wrap(err, "failed to read data through gzip.Reader")
+	// }
+	// if err = r.Close(); err != nil {
+	// 	return nil, errors.Wrap(err, "failed to close gzip.Reader, can't finalize the decompression")
+	// }
 	return data, nil
 }
