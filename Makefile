@@ -33,7 +33,7 @@ export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
 all: help
 
-run: cert/create ## Run the binary under OUT as peer=PEER and config=CONFIGPATH and create TLS certificate.
+run: ## Run the binary under OUT as peer=PEER and config=CONFIGPATH and create TLS certificate.
 	./${OUT} -n ${PEER} -c ${CONFIGPATH} \
 		--ca ${CERT_PATH}/ca.crt \
 		--crt ${CERT_PATH}/${PEER}.crt \
